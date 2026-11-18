@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+logs/
+overlay.txt
+calibration.png
+screen.png
+*.jsonl
+.env
+.env.*
+.claude/
+/AGENTS.md
+/CLAUDE.md

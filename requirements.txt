@@ -1,0 +1,5 @@
+pymem==1.14.0
+pyautogui==0.9.54
+pywin32==312
+pillow==11.0.0
+anthropic==2.10.0
