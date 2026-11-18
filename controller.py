@@ -96,8 +96,13 @@ class Controller:
         time.sleep(CLICK_DELAY)
 
     @staticmethod
-    def cell_center(row, col):
-        return GRID_LEFT + col * CELL_W + CELL_W // 2, GRID_TOP + row * CELL_H + CELL_H // 2
+    def cell_center(row, col, terrain="day"):
+        rows = 6 if terrain in ("pool", "fog") else 5
+        if not (0 <= row < rows and 0 <= col < O.COLS):
+            raise ValueError(f"cell ({row}, {col}) is off the {terrain} lawn")
+        height = 85 if terrain in ("pool", "fog", "roof", "boss") else CELL_H
+        slope = 20 * max(0, 5 - col) - 10 if terrain in ("roof", "boss") else 0
+        return GRID_LEFT + col * CELL_W + CELL_W // 2, GRID_TOP + row * height + height // 2 + slope
 
     def seed_center(self, slot):
         info = self._bank()
@@ -106,6 +111,7 @@ class Controller:
             card = bank + O.SB_FIRST_CARD + slot * O.CARD_SIZE
             pm = self.reader.pm
             x, y, w, h = (pm.read_int(card + o) for o in (O.OBJ_X, O.OBJ_Y, O.OBJ_W, O.OBJ_H))
+            x += pm.read_int(card + O.C_OFFSET_X)
             return bx + x + w // 2, by + y + h // 2
         return SEED_X0 + slot * SEED_DX, SEED_Y
 
@@ -117,17 +123,20 @@ class Controller:
         return SHOVEL
 
     # --- actions the AI will use ---------------------------------------------
-    def plant(self, slot, row, col):
-        if not (0 <= row < O.ROWS and 0 <= col < O.COLS):
-            raise ValueError(f"cell ({row}, {col}) is off the lawn")
-        self.click(*self.seed_center(slot))
-        self.click(*self.cell_center(row, col))
+    def plant(self, slot, row, col, terrain="day", pickup=None):
+        target = self.cell_center(row, col, terrain)
+        seed = pickup if pickup is not None else self.seed_center(slot)
+        if not (0 <= seed[0] < 800 and 0 <= seed[1] < 600):
+            return
+        self.click(*seed)
+        self.click(*target)
         # Right-click cancels the held seed if planting failed (not enough sun etc.)
         pyautogui.click(button="right")
 
-    def shovel(self, row, col):
+    def shovel(self, row, col, terrain="day"):
+        target = self.cell_center(row, col, terrain)
         self.click(*self.shovel_center())
-        self.click(*self.cell_center(row, col))
+        self.click(*target)
         pyautogui.click(button="right")
 
     def collect_sun(self):

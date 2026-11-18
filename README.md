@@ -6,13 +6,20 @@ Claude plays Plants vs. Zombies GOTY on Windows. It reads a text snapshot of the
 
 1. **Read the lawn.** [`state.py`](state.py) reads the game process using build-specific offsets from [`offsets.py`](offsets.py). The snapshot includes sun, seed costs and recharge status, plant positions, zombies, lawn mowers, and the current wave. [`brains.py`](brains.py) turns that snapshot into text, with a grid Claude can use to choose cells.
 2. **Ask Claude for a plan.** Claude returns up to five ordered actions as JSON. The game keeps running while Claude thinks in a background thread. The planner is called when its queue runs out and something is affordable, when a threat changes, or after about 30 seconds if something is affordable.
-3. **Check and execute each move.** [`agent.py`](agent.py) checks queued actions against the live board. If Claude queues a Peashooter at 75 sun, for example, it waits until there is 100 sun and the seed has recharged. If the cell is occupied when the move comes up, the script can skip it and report why in the next prompt. [`controller.py`](controller.py) clicks the seed packet and the target cell.
-4. **Handle the rest of the level.** The script collects sun and coins between decisions. On the chooser screen, [`seed_select.py`](seed_select.py) reads the available cards, keeps any plants locked in by Crazy Dave, and clicks the slots Claude picks. The agent detects a win or loss, collects the final reward after a win, and stops after one level.
+3. **Check and execute each move.** [`agent.py`](agent.py) checks queued actions against the live board. If Claude queues a Peashooter at 75 sun, for example, it waits until there is 100 sun and the seed has recharged. It checks graves, craters, aquatic plants, Lily Pads, Flower Pots, sleeping mushrooms, and upgrades. [`controller.py`](controller.py) uses terrain-specific click positions for five-row lawns, six-row pool boards, and the roof slope.
+4. **Handle special levels.** Conveyor cards are free, single-use plants whose click positions move across the bank. Wall-nut Bowling limits launches to the first three columns. Vasebreaker exposes temporary seed packets and adds a vase-breaking action to Claude's plans. Scripted reflexes click zombies in Whack-a-Zombie and counter Zomboss fire and ice balls with the matching instant plant. Sun and coin collection are also scripted.
+5. **Advance through Adventure.** A level ends after the game changes to a confirmed result screen. Consecutive-level mode navigates the title screen, rewards, Crazy Dave dialogue, plant selection, and the intervening Almanac, shop, shovel tutorial, and Zen Garden tutorial. It clears the old plan between boards and checks the next Adventure level number. It can retry losses up to a specified count and finishes at 5-10.
+
+The default run ends after one level. Consecutive play is enabled with `--levels N` or `--campaign`, with `--retries N` controlling loss retries. The included `10 - AI plays consecutive levels.bat` chooses Haiku at low effort and allows two retries per level. Navigation has a timeout, and repeated player or board-reading errors stop the run.
 
 ## What a run records
 
 The local JSONL log records each board snapshot sent to Claude, its plan, which actions went through, and the level result. It also captures response times and token usage when available. The recording overlay shows Claude’s latest explanation and planned moves.
 
-## Current scope
+## Implementation and verification
 
-The player targets normal daytime front-lawn levels on the Steam GOTY build **1.2.0.1096**, including early Adventure tutorials. Full Adventure support would also require conveyor levels, night and graves, pool and fog, roof, and the Dr. Zomboss fight.
+Daytime front-lawn play has been verified on the Steam GOTY build **1.2.0.1096**. The broader Adventure mechanics and transitions are implemented from public game references and covered by offline regression tests using synthetic memory and mocked input. Full-campaign play, the added memory fields, and the new screen navigation still need live verification on the target build.
+
+The extension targets Adventure, including its special levels. Standalone puzzle, Survival, and other challenge menus have separate progression rules.
+
+The reference code describes the original game layouts and mechanics. GOTY-specific fields have differences, so inferred offsets require extra care during future live checks. The project reads game memory and sends mouse input. [Public PvZ reference](https://github.com/Patoke/re-plants-vs-zombies/tree/main/Lawn)

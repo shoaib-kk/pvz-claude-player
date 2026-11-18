@@ -15,12 +15,12 @@ import pyautogui
 from state import PLANT_COSTS, PLANT_NAMES
 
 LETS_ROCK = (233, 565)
-BANK_SLOT0 = (112, 42)
 
 
-def card_pos(i):
+def card_pos(i, layout=(155, 70)):
     """Centre of chooser card i (plant id), in game pixels."""
-    return 47 + 53 * (i % 8), 155 + 70 * (i // 8)
+    top, step = layout
+    return 47 + 53 * (i % 8), top + step * (i // 8)
 
 
 def screenshot(ctl):
@@ -36,8 +36,8 @@ def in_chooser(ctl, img=None):
     return brown
 
 
-def card_status(img, i):
-    x, y = card_pos(i)
+def card_status(img, i, layout=(155, 70)):
+    x, y = card_pos(i, layout)
     px = [img.getpixel((x + dx, y + dy)) for dx in (-18, 0, 18) for dy in (22, 26)]
     r, g, b = (sum(p[k] for p in px) // len(px) for k in range(3))
     total = r + g + b
@@ -50,9 +50,9 @@ def card_status(img, i):
     return "available"
 
 
-def read_chooser(ctl):
+def read_chooser(ctl, layout=(155, 70)):
     img = screenshot(ctl)
-    return {PLANT_NAMES[i]: card_status(img, i) for i in range(48)}  # imitater skipped
+    return {PLANT_NAMES[i]: card_status(img, i, layout) for i in range(48)}  # imitater skipped
 
 
 def bank_size(ctl):
@@ -72,8 +72,8 @@ def bank_filled(ctl, slots=10):
     img = screenshot(ctl)
     count = 0
     for i in range(slots):
-        x = BANK_SLOT0[0] + 54 * i
-        if x > 520:
+        x, _ = ctl.seed_center(i)
+        if x + 12 >= img.width:
             break
         # The cost strip at the bottom of a card is light (or grey when dimmed);
         # an empty slot / the shovel box is dark.
@@ -85,16 +85,16 @@ def bank_filled(ctl, slots=10):
     return count
 
 
-def clear_bank(ctl, log=print):
+def clear_bank(ctl, log=print, slots=10):
     """Remove the cards left from last time. Cards Crazy Dave locked in can't be
     removed, so stop once clicking no longer changes anything. Returns cards left."""
-    filled = bank_filled(ctl)
+    filled = bank_filled(ctl, slots)
     while filled > 0:
         # Locked cards stay in front; click the first card after them.
         for i in range(filled):
-            ctl.click(BANK_SLOT0[0] + 54 * i, BANK_SLOT0[1])
+            ctl.click(*ctl.seed_center(i))
             time.sleep(0.8)  # card flies back
-            now = bank_filled(ctl)
+            now = bank_filled(ctl, slots)
             if now < filled:
                 filled = now
                 break
@@ -123,14 +123,19 @@ def choose(ctl, brain, log=print):
     ctl.wake()
     time.sleep(1.0)  # let the panel finish sliding in
     slots = bank_size(ctl)
-    locked = clear_bank(ctl, log)
-    status = read_chooser(ctl)
+    locked = clear_bank(ctl, log, slots)
+    try:
+        layout = ctl.reader.chooser_layout() or (155, 70)
+    except Exception:
+        layout = (155, 70)
+    status = read_chooser(ctl, layout)
     forced = [n for n, s in status.items() if s == "chosen"]
     free = slots - locked
     options = [{"name": n, "cost": PLANT_COSTS[PLANT_NAMES.index(n)]}
                for n, s in status.items() if s == "available"]
     zombies = preview_zombies(ctl)
-    pick = brain.pick_seeds(options, free, zombies, forced)
+    terrain = ctl.reader.level_info(ctl.reader.board())["terrain"]
+    pick = brain.pick_seeds(options, free, zombies, forced, terrain) if free else {}
     names = [n for n in pick.get("seeds", []) if any(o["name"] == n for o in options)]
     names = list(dict.fromkeys(names))[:free]  # de-duplicate, cap
     if len(names) < free:  # top up so "Let's Rock" is allowed
@@ -141,9 +146,9 @@ def choose(ctl, brain, log=print):
                 names.append(o["name"])
         log(f"    (topped up the loadout to {free} plants)")
     for n in names:
-        ctl.click(*card_pos(PLANT_NAMES.index(n)))
+        ctl.click(*card_pos(PLANT_NAMES.index(n), layout))
         time.sleep(0.5)
-    filled = bank_filled(ctl)
+    filled = bank_filled(ctl, slots)
     if filled < locked + len(names):
         log(f"    (only {filled - locked} of {len(names)} picks landed in the bank)")
     time.sleep(0.6)

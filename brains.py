@@ -31,37 +31,66 @@ def describe(state, recent, queue=None):
     lines = []
     wave_now, wave_total = state.get("wave", [0, 0])
     lines.append(f"Sun: {state['sun']}    Wave: {wave_now}/{wave_total}")
+    terrain = state.get("terrain", "day")
+    special = state.get("special")
+    rules = {
+        "night": "There is no falling sun. Mushrooms are awake. Graves need Grave Busters.",
+        "pool": "Rows 2 and 3 are water. Lily Pads support dry-land plants there; aquatic plants need open water.",
+        "fog": "Rows 2 and 3 are water. Use Lily Pads for dry-land plants. Mushrooms are awake and there is no falling sun.",
+        "roof": "Place a Flower Pot before another plant. Use lobbers across the slope.",
+        "boss": "Use Flower Pots and lobbers. Save Ice-shrooms for fireballs and Jalapenos for iceballs. Attack the lowered head.",
+    }
+    lines.append(f"Terrain: {terrain}. " + rules.get(terrain, ""))
+    if state.get("conveyor"):
+        lines.append("Conveyor cards are free and single-use. Use cards to leave room for new arrivals.")
+    if special == "bowling":
+        lines.append("Wall-nut Bowling: roll nuts into threatened lanes from columns 0 through 2 only.")
+    elif special == "vases":
+        lines.append("Vasebreaker: use break_vase to smash a vase, starting near the right edge. "
+                     "Use its temporary seed packets before they expire. Open one at a time.")
     lines.append("")
     lines.append("Seed packets (slot: name, cost, status):")
     for s in state["seeds"]:
-        status = "READY" if s["ready"] else "recharging"
+        status = "READY" if s["ready"] else "moving into view" if state.get("conveyor") else "recharging"
         afford = "" if s["cost"] is None or s["cost"] <= state["sun"] else " (can't afford)"
         lines.append(f"  {s['slot']}: {s['name']}, {s['cost']} sun, {status}{afford}")
     lines.append("")
     lines.append("Lawn (row 0 = top, col 0 = next to the house, zombies walk from col 8 toward col 0).")
     lines.append("Each cell: plant name, '.' = empty grass, '#' = bare dirt (can't plant there).")
     lines.append("'M' at the start of a row = lawn mower still available.")
-    stacked = {(p["row"], p["col"]): p["type"] for p in state["plants"]
-               if p["type"] in ("pumpkin", "lily_pad", "flower_pot")}
+    stacked = {}
+    for p in state["plants"]:
+        if p["type"] in ("pumpkin", "lily_pad", "flower_pot"):
+            stacked.setdefault((p["row"], p["col"]), []).append(p["type"])
+    items = {(i["row"], i["col"]): i["type"] for i in state.get("items", [])}
+    sleeping = {(p["row"], p["col"]) for p in state["plants"] if p.get("asleep")}
     types = state.get("cells")
     for r, row in enumerate(state["grid"]):
         if types and all(t == O.CELL_DIRT for t in types[r]):
             lines.append(f"  row {r}   | (bare dirt - unusable this level)")
             continue
-        mower = "M" if state.get("mowers", [True] * O.ROWS)[r] else "-"
+        mower = "M" if state.get("mowers", [True] * len(state["grid"]))[r] else "-"
         cells = []
         for c, plant in enumerate(row):
-            name = plant or ("#" if types and types[r][c] == O.CELL_DIRT else ".")
+            cell = types[r][c] if types else O.CELL_GRASS
+            name = plant or items.get((r, c)) or {0: "#", O.CELL_DIRT: "#", O.CELL_POOL: "water"}.get(cell, ".")
+            if plant and (r, c) in sleeping:
+                name += "(asleep)"
             if (r, c) in stacked:
-                name = f"{stacked[(r, c)]}+{plant}" if plant else stacked[(r, c)]
+                name = "+".join(stacked[(r, c)] + ([name] if plant else []))
             cells.append(name)
         lines.append(f"  row {r} {mower} | " + " | ".join(cells))
     lines.append("")
-    zs = [z for z in state["zombies"] if z["x"] < 820]
+    zs = [z for z in state["zombies"] if z["x"] < 820 or z["type"] == "dr_zomboss"]
     if zs:
         lines.append("Zombies on the lawn (closest first):")
         for z in zs:
             armor = f", armor {z['armor_hp']}" if z["armor_hp"] else ""
+            if z["type"] == "dr_zomboss":
+                lines.append(f"  Dr. Zomboss: hp {z['hp']}, phase {z.get('phase', 'unknown')}")
+                if ball := z.get("projectile"):
+                    lines.append(f"  Incoming {ball['type']} ball in row {ball['row']}")
+                continue
             lines.append(f"  {z['type']} in row {z['row']} at about col {x_to_col(z['x'])} "
                          f"(x={z['x']}), hp {z['hp']}{armor}")
     else:
@@ -87,6 +116,7 @@ an ordered list of up to 5 actions.
 Actions:
 - plant: put a seed from your seed packets on an empty cell.
 - shovel: remove one of your plants to free its cell (you get no sun back).
+- break_vase: click a vase at the specified row and column in Vasebreaker.
 
 How your plan is carried out:
 - The game keeps running while you think (about 5 seconds), so zombies will have moved a little
@@ -101,6 +131,8 @@ How your plan is carried out:
 Rules of thumb:
 - Sun is collected for you automatically. Sunflowers make more sun over time.
 - A zombie that reaches the house in a row with no lawn mower loses the game. A mower clears its row once.
+- Put Peashooters between the house and the zombies so they can hit. Prioritize threatened lanes
+  with no mower before spending more sun on economy.
 - Pumpkin can be planted over an existing plant to shield it.
 - Upgrade plants go on top of their base plant: gatling_pea on repeater, twin_sunflower on sunflower,
   winter_melon on melon_pult, spikerock on spikeweed, cob_cannon on the left of two side-by-side kernel_pults.
@@ -117,7 +149,7 @@ DECISION_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "type": {"type": "string", "enum": ["plant", "shovel"]},
+                    "type": {"type": "string", "enum": ["plant", "shovel", "break_vase"]},
                     "seed": {"type": "string"},
                     "row": {"type": "integer"},
                     "col": {"type": "integer"},
@@ -133,8 +165,10 @@ DECISION_SCHEMA = {
 
 
 PICK_SYSTEM = """You are about to play a level of Plants vs. Zombies and must choose your plants.
-It is a daytime front-lawn level: 5 grass rows, no pool, no fog, no roof. Mushrooms would be asleep.
-Falling sun is collected for you automatically. Upgrade plants (gatling_pea, gold_magnet, cob_cannon...)
+Pick for the terrain described in the request. Bring a Lily Pad for pool/fog and a Flower Pot and
+lobbers for a roof. In night/fog, use mushrooms and an appropriate sun producer. During day,
+mushrooms need Coffee Bean. Falling sun is collected for you automatically.
+Upgrade plants (gatling_pea, gold_magnet, cob_cannon...)
 can only be planted on top of their base plant, so they need that base plant in the loadout too.
 Pick exactly the number of plants asked for, using
 only names from the list. Answer with JSON only; keep "reasoning" to one or two short sentences
@@ -151,8 +185,8 @@ PICK_SCHEMA = {
 }
 
 
-def pick_prompt(options, slots, zombies, forced=None):
-    lines = [f"Choose exactly {slots} plants (list {slots} names; every empty slot is wasted)."]
+def pick_prompt(options, slots, zombies, forced=None, terrain="day"):
+    lines = [f"Terrain: {terrain}. Choose exactly {slots} plants (list {slots} names)."]
     if forced:
         lines += [f"Crazy Dave has already locked these into your loadout (you will have them too): "
                   + ", ".join(forced)]
@@ -201,8 +235,8 @@ class ClaudeBrain:
         decision["_prompt"] = board
         return decision
 
-    def pick_seeds(self, options, slots, zombies, forced=None):
-        return self.ask(PICK_SYSTEM, pick_prompt(options, slots, zombies, forced), PICK_SCHEMA)
+    def pick_seeds(self, options, slots, zombies, forced=None, terrain="day"):
+        return self.ask(PICK_SYSTEM, pick_prompt(options, slots, zombies, forced, terrain), PICK_SCHEMA)
 
 
 # ---------------------------------------------------------------------------
@@ -242,8 +276,8 @@ class ClaudeCodeBrain:
         decision["_prompt"] = board
         return decision
 
-    def pick_seeds(self, options, slots, zombies, forced=None):
-        return self.ask(PICK_SYSTEM, pick_prompt(options, slots, zombies, forced), PICK_SCHEMA)
+    def pick_seeds(self, options, slots, zombies, forced=None, terrain="day"):
+        return self.ask(PICK_SYSTEM, pick_prompt(options, slots, zombies, forced, terrain), PICK_SCHEMA)
 
     def ask(self, system, user, schema):
         import subprocess
@@ -287,10 +321,17 @@ WALLS = ["tall_nut", "wall_nut"]
 class SimpleBrain:
     name = "simple"
 
-    def pick_seeds(self, options, slots, zombies, forced=None):
+    def pick_seeds(self, options, slots, zombies, forced=None, terrain="day"):
         have = [o["name"] for o in options]
         wish = ["sunflower", "peashooter", "repeater", "potato_mine", "wall_nut", "cherry_bomb",
                 "snow_pea", "squash", "threepeater", "tall_nut", "jalapeno", "cabbage_pult"]
+        if terrain in ("night", "fog"):
+            wish = ["sun_shroom", "puff_shroom", "fume_shroom", "grave_buster"] + wish
+        if terrain in ("pool", "fog"):
+            wish = ["lily_pad", "tangle_kelp"] + wish
+        if terrain in ("roof", "boss"):
+            wish = ["flower_pot", "sunflower", "cabbage_pult", "kernel_pult"] + wish
+        wish = list(dict.fromkeys(wish))
         seeds = [w for w in wish if w in have][:slots]
         return {"reasoning": "Standard sunflower + peas + emergency plants.", "seeds": seeds}
 
@@ -298,6 +339,17 @@ class SimpleBrain:
         sun = state["sun"]
         seeds = {s["name"]: s for s in state["seeds"] if s["ready"] and (s["cost"] or 0) <= sun}
         grid = state["grid"]
+        if state.get("special") == "bowling":
+            nut = next((n for n in ("wall_nut", "explode_o_nut", "giant_wall_nut") if n in seeds), None)
+            if nut and state["zombies"]:
+                return self._plant(nut, state["zombies"][0]["row"], 0, "Rolling into the nearest threat.")
+            return {"reasoning": "Waiting for a target or a nut.", "actions": []}
+        if state.get("special") == "vases" and not seeds and not state["zombies"]:
+            vases = [i for i in state.get("items", []) if i["type"] == "vase"]
+            if vases:
+                vase = max(vases, key=lambda i: i["col"])
+                return {"reasoning": "Opening a vase near the right edge.",
+                        "actions": [{"type": "break_vase", "row": vase["row"], "col": vase["col"]}]}
         empty = lambda r, c: 0 <= c < O.COLS and grid[r][c] is None
         zs = [z for z in state["zombies"] if z["x"] < 800]
 
