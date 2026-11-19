@@ -34,14 +34,16 @@ import pyautogui
 import win32gui
 
 import offsets as O
+import plant_info
 from brains import describe, make_brain, x_to_col
-from journal import Journal, LevelRecorder
+from journal import Journal, LevelRecorder, situation_of
 from controller import Controller
 
 ROOT = Path(__file__).parent
 TICK = 0.15                # main loop period (sun pickup, plan execution)
 MIN_GAP = 4.0              # never start a new AI request sooner than this after the last one
 MAX_GAP = 30.0             # re-plan at least this often while something is affordable
+FINAL_REWARDS = {7, 8, 9, 10, 11, 12, 13, 14, 15, 18}   # seed packet, note, trophy, money bag...
 MAX_ACTIONS = 5            # length of the AI's build queue
 UPGRADES = {"gatling_pea": "repeater", "twin_sunflower": "sunflower", "gloom_shroom": "fume_shroom",
             "cattail": "lily_pad", "winter_melon": "melon_pult", "gold_magnet": "magnet_shroom",
@@ -204,6 +206,11 @@ class Agent:
         self.had_plan = False
         self.planted_since_ask = 0
         self.countered_boss_projectile = None
+        self.plant_seen = {}           # (row, col, type) -> when it was first seen
+        self.sun_gains = []            # (time, sun gained) over the last minute
+        self.last_sun = None
+        self.last_mowers = None
+        self.level_finished = False
 
     # --- small helpers -------------------------------------------------------
     def log(self, **entry):
@@ -232,7 +239,53 @@ class Agent:
         s = self.reader.snapshot()
         if s.get("errors"):
             self.log(kind="read_error", errors=s["errors"])
+        if s.get("in_level") and "plants" in s:
+            self.annotate(s)
         return s
+
+    def event(self, text):
+        """Something the player would notice on screen, reported with its next board."""
+        self.recent = (self.recent + [f"EVENT: {text}"])[-20:]
+        self.log(kind="event", text=text)
+
+    def annotate(self, s):
+        """Facts a human sees but memory doesn't hold directly: how long each plant has
+        been in the ground (a Potato Mine arms after ~15 s) and sun collected per minute."""
+        now = time.monotonic()
+        seen = getattr(self, "plant_seen", None)
+        if seen is None:
+            return
+        present = set()
+        for p in s["plants"]:
+            key = (p["row"], p["col"], p["type"])
+            present.add(key)
+            p["age"] = round(now - seen.setdefault(key, now), 1)
+        for key in list(seen):
+            if key not in present:
+                row, col, kind = key
+                age = now - seen.pop(key)
+                if kind == "potato_mine":   # what a player sees: did the mine go off or get eaten?
+                    if age < plant_info.POTATO_MINE_ARM_SECONDS:
+                        self.event(f"your potato_mine at row {row} col {col} was eaten {age:.0f}s after "
+                                   "planting, before it armed")
+                    else:
+                        self.event(f"your potato_mine at row {row} col {col} exploded")
+        mowers = s.get("mowers")
+        if getattr(self, "level_finished", False):
+            mowers = None                      # end-of-level mower cash-in, not a defence
+        if mowers and self.last_mowers and len(mowers) == len(self.last_mowers):
+            for row, (old, new) in enumerate(zip(self.last_mowers, mowers)):
+                if old and not new:
+                    self.event(f"the lawn mower in row {row} fired; row {row} has no mower now")
+        if mowers:
+            self.last_mowers = list(mowers)
+        sun = s.get("sun")
+        if sun is not None:
+            if self.last_sun is not None and sun > self.last_sun:
+                self.sun_gains.append((now, sun - self.last_sun))
+            self.last_sun = sun
+            self.sun_gains = [(t, g) for t, g in self.sun_gains if now - t <= 60]
+            s["sun_per_min"] = sum(g for _, g in self.sun_gains)
 
     # --- before the level ----------------------------------------------------
     def restart_level(self):
@@ -345,6 +398,15 @@ class Agent:
                         time.sleep(0.5)
                         continue
                 if self.reader.dave_talking():
+                    try:
+                        offer = seed_select.slot_offer(seed_select.screenshot(self.ctl))
+                    except Exception:  # noqa: BLE001 - no screenshot: just advance the dialogue
+                        offer = False
+                    if offer:
+                        self.ctl.click(*seed_select.SLOT_OFFER_YES)   # Dave's seed-slot upgrade (game coins)
+                        self.log(kind="seed_slot_upgrade", level=previous_level)
+                        time.sleep(1.5)
+                        continue
                     self.ctl.click(430, 120)
                     time.sleep(1.2)
                     continue
@@ -368,15 +430,20 @@ class Agent:
         self.show("Choosing plants...")
         t0 = time.time()
         try:
-            self.brain.level = self.reader.level_info(self.reader.board())["level"]
-        except Exception:  # noqa: BLE001 - only used to stage plant knowledge
+            info = self.reader.level_info(self.reader.board())
+            self.brain.level = info["level"]
+            journal = getattr(self, "journal", None)
+            if journal:
+                self.brain.notes = journal.prompt_block(situation_of(info))
+        except Exception:  # noqa: BLE001 - only used to stage knowledge
             pass
         names, why, warned = seed_select.choose(self.ctl, self.brain, log=print)
         self.loadout = list(names)
         self.loadout_warning = warned
-        self.show(f"Loadout: {', '.join(names)}. {why}")
-        self.log(kind="seed_pick", seeds=names, reasoning=why, warned=warned,
-                 think_seconds=round(time.time() - t0, 1))
+        plan = getattr(self.brain, "plan", None)
+        self.show(f"Loadout: {', '.join(names)}. {why}" + (f"\n    Plan: {plan}" if plan else ""))
+        self.log(kind="seed_pick", seeds=names, reasoning=why, warned=warned, plan=plan,
+                 think_seconds=round(time.time() - t0, 1), **self.usage_fields())
 
     # --- during the level ----------------------------------------------------
     def collect(self):
@@ -488,19 +555,47 @@ class Agent:
             if 0 <= award["x"] < 800 and 0 <= award["y"] < 600:
                 self.ctl.click(award["x"], award["y"])
                 self.log(kind="reward_clicked", type=award["type"], wave=state.get("wave"))
+                if award["type"] in FINAL_REWARDS:
+                    # The game then cashes in every unused mower (they all drive off).
+                    # That isn't a mower saving a row, so stop recording from here on.
+                    self.level_finished = True
                 return True
         return False
 
-    def reflect(self, label, outcome):
+    def usage_fields(self):
+        """The player's token usage for the call that just finished (for usage_report.py)."""
+        usage = getattr(self.brain, "last_usage", None)
+        usage = usage.to_dict() if hasattr(usage, "to_dict") else usage
+        return {"usage": usage, "model": getattr(self.brain, "model", None)}
+
+    def write_plan(self, label):
+        """No plant chooser this level (conveyor, early levels...): ask for the plan now."""
+        if not hasattr(self.brain, "write_plan"):
+            return
+        state = self.snapshot()
+        if not self.readable(state):
+            return
+        t0 = time.time()
+        try:
+            plan = self.brain.write_plan(state)
+        except Exception as e:  # noqa: BLE001 - play without a plan rather than stop
+            self.log(kind="plan_error", level=label, error=str(e))
+            return
+        self.show(f"Plan for {label}: {plan}")
+        self.log(kind="level_plan", level=label, plan=plan, think_seconds=round(time.time() - t0, 1),
+                 **self.usage_fields())
+
+    def reflect(self, label, outcome, situation=None):
         """Let the player rewrite its journal after a finished level."""
         journal, recorder = getattr(self, "journal", None), getattr(self, "recorder", None)
         if not journal or not recorder:
             return
         board_text = describe(recorder.last, []) if recorder.last else None
-        report = recorder.report(board_text)
+        report = recorder.report(board_text, outcome)
         t0 = time.time()
         try:
-            summary = journal.reflect(self.brain, label, outcome, report)
+            summary = journal.reflect(self.brain, label, outcome, report, situation,
+                                      getattr(self.brain, "plan", None))
         except Exception as e:  # noqa: BLE001 - the journal must never stop a run
             self.log(kind="journal_error", level=label, error=str(e))
             return
@@ -509,7 +604,7 @@ class Agent:
         lessons = "".join("\n    - " + x for x in journal.lessons)
         self.show(f"Journal after {label} ({outcome}): {summary}{lessons}")
         self.log(kind="journal", level=label, outcome=outcome, summary=summary, lessons=journal.lessons,
-                 report=report, think_seconds=round(time.time() - t0, 1))
+                 report=report, think_seconds=round(time.time() - t0, 1), **self.usage_fields())
 
     def capture_result(self, level, outcome):
         stamp = datetime.now().strftime("%H-%M-%S-%f")
@@ -594,9 +689,7 @@ class Agent:
                 awaiting_result = False
                 if time.monotonic() - last_reward_click >= 3 and self.click_reward(state):
                     last_reward_click = time.monotonic()
-                    awaiting_result = not state.get("zombies") and state["awards"][0]["type"] in {
-                        7, 8, 9, 10, 11, 12, 13, 14, 15, 18
-                    }
+                    awaiting_result = not state.get("zombies") and state["awards"][0]["type"] in FINAL_REWARDS
                     continue
 
                 if not self.readable(state):
@@ -609,7 +702,8 @@ class Agent:
                     continue
                 unreadable_since = None
                 recorder = getattr(self, "recorder", None)
-                if recorder and time.monotonic() - last_observe >= 1:
+                if recorder and not getattr(self, "level_finished", False) \
+                        and time.monotonic() - last_observe >= 1:
                     recorder.observe(state)
                     last_observe = time.monotonic()
 
@@ -685,8 +779,10 @@ class Agent:
         retries_left = self.retries
         while wins < self.levels:
             journal = getattr(self, "journal", None)
-            if journal and hasattr(self, "brain"):
-                self.brain.notes = journal.prompt_block()
+            if hasattr(self, "brain"):
+                self.brain.plan = None       # written fresh for every attempt
+                if journal:
+                    self.brain.notes = journal.prompt_block()
             if not self.get_to_playing(previous_level=last_win, retry=retry or self.retries > 0):
                 self.show(f"Navigation stopped on the {self.reader.scene()} screen.")
                 return "transition_stalled", wins
@@ -699,22 +795,29 @@ class Agent:
                 self.show(f"Expected the next Adventure board but reached level {level}.")
                 return "unexpected_level", wins
             self.reset_plan()
-            reset_brain = getattr(getattr(self, "brain", None), "reset", None)
-            if reset_brain:
-                reset_brain()  # fresh conversation per level
-            label =f"{(level - 1) // 10 + 1}-{(level - 1) % 10 + 1}" if level else "current level"
+            label = f"{(level - 1) // 10 + 1}-{(level - 1) % 10 + 1}" if level else "current level"
+            situation = situation_of(info)
             self.show(f"Level {label} started ({info['special'] or info['terrain']}).")
             self.log(kind="level_start", **info)
             if hasattr(self, "brain"):
                 self.brain.level = level
+                if journal:
+                    self.brain.notes = journal.prompt_block(situation)
+                if self.brain.plan is None and info.get("special") != "whack":
+                    self.write_plan(label)
+                reset_brain = getattr(self.brain, "reset", None)
+                if reset_brain:
+                    reset_brain()  # fresh conversation per level, with this level's journal and plan
             self.recorder = LevelRecorder(label, getattr(self, "loadout", []))
             if getattr(self, "loadout_warning", False):
                 self.recorder.events.append("before the level: the game warned that your loadout "
                                             "had no sun-producing plant; you started anyway")
                 self.loadout_warning = False
             result = self.play()
-            if result in ("won", "lost"):
-                self.reflect(label, result)
+            # Whack-a-Zombie is played by the script (mallet clicks), not by the player,
+            # so there is nothing for the player to reflect on.
+            if result in ("won", "lost") and info.get("special") != "whack":
+                self.reflect(label, result, situation)
             if result in ("won", "lost"):
                 self.capture_result(level, result)
             if result == "won":

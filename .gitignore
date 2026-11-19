@@ -13,3 +13,4 @@ screen.png
 /CLAUDE.md
 audio-review/
 journal*/
+!snapshots/*/journal*/

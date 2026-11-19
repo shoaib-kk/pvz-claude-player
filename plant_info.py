@@ -137,3 +137,88 @@ def describe_plants(names, level=None):
 
 def stage(level):
     return "almanac" if level is not None and level >= ALMANAC_FROM_LEVEL else "cards"
+
+
+# Full health of plants that don't have the usual ~300, for "damaged" readouts.
+PLANT_MAX_HP = {"wall_nut": 4000, "tall_nut": 8000, "pumpkin": 4000, "garlic": 400}
+POTATO_MINE_ARM_SECONDS = 15
+
+
+def plant_health(kind, hp):
+    """Remaining health as a percentage of full, or None if unknown."""
+    full = PLANT_MAX_HP.get(kind, 300)
+    if hp is None or full <= 0:
+        return None
+    return max(0, min(100, round(100 * hp / full)))
+
+
+# What a player notices about each zombie by watching it (known from the start).
+ZOMBIE_CARDS = {
+    "zombie": "An ordinary zombie.",
+    "flag": "An ordinary zombie waving a flag; it leads a big wave.",
+    "conehead": "Wears a traffic cone that soaks up damage.",
+    "pole_vaulting": "Runs with a pole and vaults over the first plant it reaches.",
+    "buckethead": "Wears a metal bucket that soaks up a lot of damage.",
+    "newspaper": "Hides behind a newspaper; gets angry and fast when it's destroyed.",
+    "screen_door": "Holds a screen door that blocks shots from the front.",
+    "football": "Wears football armour and moves fast.",
+    "dancing": "Dances and summons backup dancers around itself.",
+    "backup_dancer": "Summoned by a dancing zombie.",
+    "ducky_tube": "An ordinary zombie floating on the pool.",
+    "snorkel": "Swims underwater and only surfaces to eat.",
+    "zomboni": "Drives an ice machine that flattens plants and leaves an ice trail.",
+    "bobsled": "A bobsled team that rides on ice trails.",
+    "dolphin_rider": "Rides a dolphin and jumps over the first plant in the water.",
+    "jack_in_the_box": "Carries a jack-in-the-box that can explode.",
+    "balloon": "Floats over everything on a balloon.",
+    "digger": "Tunnels underground to the house end, then walks back the other way.",
+    "pogo": "Bounces over plants on a pogo stick.",
+    "yeti": "A rare yeti that runs away after a while.",
+    "bungee": "Drops from the sky to steal a plant.",
+    "ladder": "Puts a ladder on a wall plant and climbs over it.",
+    "catapult": "Lobs basketballs at plants from a distance.",
+    "gargantuar": "Huge; smashes plants and throws an imp when damaged.",
+    "imp": "Small and fast; thrown by a gargantuar.",
+}
+
+# Almanac numbers (unlocked with the plant Almanac). "Toughness" is in peas (20 damage each).
+ZOMBIE_ALMANAC = {
+    "zombie": "toughness ~14 peas; speed normal",
+    "flag": "toughness ~14 peas; speed slightly faster",
+    "conehead": "toughness ~33 peas (cone ~19 + body); speed normal",
+    "pole_vaulting": "toughness ~25 peas; fast until it vaults, then normal; a Tall-nut stops the vault",
+    "buckethead": "toughness ~70 peas (bucket ~55 + body); speed normal; metal (magnets remove it)",
+    "newspaper": "toughness ~22 peas (paper ~8 + body); after the paper breaks, much faster",
+    "screen_door": "toughness ~70 peas (door ~55 + body); door blocks straight shots; lobbed shots and fumes go past it; metal",
+    "football": "toughness ~84 peas (helmet ~70 + body); fast; metal",
+    "dancing": "toughness ~25 peas; summons up to 4 backup dancers in neighbouring cells",
+    "backup_dancer": "toughness ~14 peas",
+    "ducky_tube": "toughness ~14 peas; water rows only",
+    "snorkel": "toughness ~14 peas; can't be hit while submerged",
+    "zomboni": "toughness ~68 peas; crushes plants; Spikeweed pops it",
+    "bobsled": "toughness ~14 peas each; only on ice",
+    "dolphin_rider": "toughness ~25 peas; fast; jumps the first plant in water (a Tall-nut stops it)",
+    "jack_in_the_box": "toughness ~25 peas; fast; may explode, destroying plants in a 3x3 area",
+    "balloon": "toughness ~14 peas; only Cactus, Cattail or Blover can hit it while flying",
+    "digger": "toughness ~25 peas; surfaces at column 0 and walks right; Split Pea or Starfruit hit it from behind",
+    "pogo": "toughness ~25 peas; jumps over plants; a Tall-nut stops it; magnets remove the stick",
+    "yeti": "toughness ~68 peas",
+    "bungee": "toughness ~22 peas; steals the plant it lands on; Umbrella Leaf blocks it",
+    "ladder": "toughness ~34 peas (ladder shield ~25 + body); metal",
+    "catapult": "toughness ~43 peas; hits plants from the back; Umbrella Leaf blocks the balls",
+    "gargantuar": "toughness ~150 peas; smashes any plant; throws an imp at half health",
+    "imp": "toughness ~14 peas; fast",
+}
+
+
+def describe_zombies(names, level=None):
+    almanac = level is not None and level >= ALMANAC_FROM_LEVEL
+    lines = []
+    for name in dict.fromkeys(names):
+        if name not in ZOMBIE_CARDS:
+            continue
+        info = ZOMBIE_CARDS[name]
+        if almanac and name in ZOMBIE_ALMANAC:
+            info += f" [Almanac: {ZOMBIE_ALMANAC[name]}]"
+        lines.append(f"  {name}: {info}")
+    return lines

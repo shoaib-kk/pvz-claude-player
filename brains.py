@@ -52,7 +52,9 @@ def describe(state, recent, queue=None):
     """Compact text description of the board for the model."""
     lines = []
     wave_now, wave_total = state.get("wave", [0, 0])
-    lines.append(f"Sun: {state['sun']}    Wave: {wave_now}/{wave_total}")
+    lines.append(f"Sun: {state['sun']}    Wave: {wave_now}/{wave_total}"
+                 + (f"    Sun collected in the last minute: {state['sun_per_min']}"
+                    if state.get("sun_per_min") is not None else ""))
     terrain = state.get("terrain", "day")
     special = state.get("special")
     rules = {
@@ -78,7 +80,14 @@ def describe(state, recent, queue=None):
     lines.append("")
     lines.append("Seed packets (slot: name, cost, status):")
     for s in state["seeds"]:
-        status = "READY" if s["ready"] else "moving into view" if state.get("conveyor") else "recharging"
+        if s["ready"]:
+            status = "READY"
+        elif state.get("conveyor"):
+            status = "moving into view"
+        else:
+            now, full = (s.get("recharge") or [0, 0])[:2]
+            left = max(0, (full - now)) / 100 if full else 0
+            status = f"recharging, ready in {left:.0f}s" if left else "recharging"
         afford = "" if s["cost"] is None or s["cost"] <= state["sun"] else " (can't afford)"
         lines.append(f"  {s['slot']}: {s['name']}, {s['cost']} sun, {status}{afford}")
     known = plant_info.describe_plants([s["name"] for s in state["seeds"]], state.get("level"))
@@ -90,13 +99,27 @@ def describe(state, recent, queue=None):
     lines.append("")
     lines.append("Lawn (row 0 = top, col 0 = next to the house, zombies walk from col 8 toward col 0).")
     lines.append("Each cell: plant name, '.' = empty grass, '#' = bare dirt (can't plant there).")
-    lines.append("'M' at the start of a row = lawn mower still available.")
+    lines.append("'M' at the start of a row = lawn mower still available. "
+                 "(N%) = a damaged plant's remaining health.")
     stacked = {}
     for p in state["plants"]:
         if p["type"] in ("pumpkin", "lily_pad", "flower_pot"):
             stacked.setdefault((p["row"], p["col"]), []).append(p["type"])
     items = {(i["row"], i["col"]): i["type"] for i in state.get("items", [])}
     sleeping = {(p["row"], p["col"]) for p in state["plants"] if p.get("asleep")}
+    notes = {}
+    for p in state["plants"]:
+        if p["type"] in ("lily_pad", "flower_pot"):
+            continue
+        tags = []
+        health = plant_info.plant_health(p["type"], p.get("hp"))
+        if health is not None and health < 90:
+            tags.append(f"{health}%")
+        if p["type"] == "potato_mine" and p.get("age") is not None:
+            tags.append("armed" if p["age"] >= plant_info.POTATO_MINE_ARM_SECONDS
+                        else f"arming {plant_info.POTATO_MINE_ARM_SECONDS - p['age']:.0f}s")
+        if tags:
+            notes[(p["row"], p["col"])] = "(" + ", ".join(tags) + ")"
     types = state.get("cells")
     for r, row in enumerate(state["grid"]):
         if types and all(t == O.CELL_DIRT for t in types[r]):
@@ -109,6 +132,8 @@ def describe(state, recent, queue=None):
             name = plant or items.get((r, c)) or {0: "#", O.CELL_DIRT: "#", O.CELL_POOL: "water"}.get(cell, ".")
             if plant and (r, c) in sleeping:
                 name += "(asleep)"
+            if plant and (r, c) in notes:
+                name += notes[(r, c)]
             if (r, c) in stacked:
                 name = "+".join(stacked[(r, c)] + ([name] if plant else []))
             cells.append(name)
@@ -128,6 +153,10 @@ def describe(state, recent, queue=None):
                          f"(x={z['x']}), hp {z['hp']}{armor}")
     else:
         lines.append("No zombies on the lawn yet.")
+    known_z = plant_info.describe_zombies([z["type"] for z in zs], state.get("level"))
+    if known_z:
+        lines.append("What you know about these zombies:")
+        lines.extend(known_z)
     if not special:
         lines.extend(_row_summary(state, zs))
     if queue:
@@ -136,7 +165,7 @@ def describe(state, recent, queue=None):
         lines.extend(f"  {json.dumps(a)}" for a in queue)
     if recent:
         lines.append("")
-        lines.append("Results of your recent actions:")
+        lines.append("Results of your recent actions, and things that happened:")
         lines.extend(f"  {r}" for r in recent[-8:])
     return "\n".join(lines)
 
@@ -210,6 +239,9 @@ Upgrade plants (gatling_pea, gold_magnet, cob_cannon...) can only be planted on 
 plant, so they need that base plant in the loadout too.
 Pick exactly the number of plants asked for, using only names from the list.
 Your journal (if any) holds lessons you wrote after earlier levels.
+Also write your game plan for this level in "plan": 3-6 short lines covering your sun economy,
+which plants go in which columns, how you'll handle the previewed zombies, and what you'll do
+if a row starts to break. You'll see this plan with every board during the level.
 Answer with JSON only; keep "reasoning" to one or two short sentences
 explaining your loadout - it may be shown to viewers."""
 
@@ -218,8 +250,24 @@ PICK_SCHEMA = {
     "properties": {
         "reasoning": {"type": "string"},
         "seeds": {"type": "array", "items": {"type": "string"}},
+        "plan": {"type": "string"},
     },
-    "required": ["reasoning", "seeds"],
+    "required": ["reasoning", "seeds", "plan"],
+    "additionalProperties": False,
+}
+
+
+PLAN_SYSTEM = """You are about to play a level of Plants vs. Zombies. The level is starting and this is the
+first board. Before you make any moves, write your game plan for the level in "plan": 3-6 short lines
+covering your sun economy, which plants go in which columns, how you'll handle the zombies you
+expect, and what you'll do if a row starts to break. You'll see this plan with every board during
+the level. Your journal (if any) holds lessons you wrote after earlier levels.
+Answer with JSON only."""
+
+PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {"plan": {"type": "string"}},
+    "required": ["plan"],
     "additionalProperties": False,
 }
 
@@ -239,16 +287,37 @@ def pick_prompt(options, slots, zombies, forced=None, terrain="day", level=None)
     if zombies:
         lines += ["", "Zombies previewed for this level: "
                   + ", ".join(f"{n} x{k}" for n, k in zombies.items())]
+        lines += plant_info.describe_zombies(list(zombies), level)
     return "\n".join(lines)
 
 
 class Notes:
-    """Per-run knowledge the agent hands the player: its journal text and the current level."""
+    """Per-run knowledge the agent hands the player: its journal text, the current level,
+    and the game plan the player wrote for this level."""
     notes = ""
     level = None
+    plan = None
+    plan_effort = None     # effort for the few strategic calls: pick + plan, plan, reflection
 
     def system(self, base):
-        return base + (self.notes or "")
+        text = base + (self.notes or "")
+        if self.plan:
+            text += ("\n\nYour game plan for this level (you wrote it before the level started; "
+                     "follow it unless the board shows it isn't working):\n" + self.plan.strip())
+        return text
+
+    def pick_seeds(self, options, slots, zombies, forced=None, terrain="day"):
+        answer = self.ask(self.system(PICK_SYSTEM),
+                          pick_prompt(options, slots, zombies, forced, terrain, self.level),
+                          PICK_SCHEMA, effort=self.plan_effort)
+        self.plan = (answer.get("plan") or "").strip() or None
+        return answer
+
+    def write_plan(self, state):
+        answer = self.ask(self.system(PLAN_SYSTEM), describe(state, []), PLAN_SCHEMA,
+                          effort=self.plan_effort)
+        self.plan = (answer.get("plan") or "").strip() or None
+        return self.plan
 
 
 class ClaudeBrain(Notes):
@@ -262,14 +331,14 @@ class ClaudeBrain(Notes):
         self.effort = effort
         self.last_usage = None
 
-    def ask(self, system, user, schema):
+    def ask(self, system, user, schema, effort=None):
         response = self.client.beta.messages.create(
             model=self.model,
             max_tokens=16000,
             system=system,
             messages=[{"role": "user", "content": user}],
             output_config={
-                "effort": self.effort,
+                "effort": effort or self.effort,
                 "format": {"type": "json_schema", "schema": schema},
             },
             # If a request is ever declined, the API retries it on a fallback model.
@@ -288,9 +357,6 @@ class ClaudeBrain(Notes):
         decision["_prompt"] = board
         return decision
 
-    def pick_seeds(self, options, slots, zombies, forced=None, terrain="day"):
-        return self.ask(self.system(PICK_SYSTEM), pick_prompt(options, slots, zombies, forced, terrain, self.level),
-                        PICK_SCHEMA)
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +392,7 @@ class ClaudeCodeBrain(Notes):
     the context stays small. Seed picks (once per level) use a one-shot call."""
     name = "subscription"
 
-    def __init__(self, model=None, effort="medium", timeout=180, persistent=True, max_turns=15):
+    def __init__(self, model=None, effort="medium", timeout=180, persistent=True, max_turns=40):
         self.exe = find_claude_exe()
         self.model = model
         self.effort = effort
@@ -342,7 +408,7 @@ class ClaudeCodeBrain(Notes):
         import atexit
         atexit.register(self.close)
 
-    def _base_cmd(self, system, schema):
+    def _base_cmd(self, system, schema, effort=None):
         cmd = [self.exe, "-p",
                "--json-schema", json.dumps(schema),
                "--system-prompt", system,
@@ -352,7 +418,7 @@ class ClaudeCodeBrain(Notes):
                "--disable-slash-commands",    # don't load skills
                "--settings", '{"alwaysThinkingEnabled": false}',
                "--no-session-persistence",
-               "--effort", self.effort]
+               "--effort", effort or self.effort]
         if self.model:
             cmd += ["--model", self.model]
         return cmd
@@ -434,9 +500,6 @@ class ClaudeCodeBrain(Notes):
         decision["_prompt"] = board
         return decision
 
-    def pick_seeds(self, options, slots, zombies, forced=None, terrain="day"):
-        return self.ask(self.system(PICK_SYSTEM), pick_prompt(options, slots, zombies, forced, terrain, self.level),
-                        PICK_SCHEMA)
 
     def _parse(self, data):
         if data.get("is_error"):
@@ -447,10 +510,10 @@ class ClaudeCodeBrain(Notes):
             answer = json.loads(data.get("result") or "{}")
         return answer
 
-    def ask(self, system, user, schema):
+    def ask(self, system, user, schema, effort=None):
         """One-shot call (new process)."""
         import subprocess
-        cmd = self._base_cmd(system, schema) + ["--output-format", "json"]
+        cmd = self._base_cmd(system, schema, effort) + ["--output-format", "json"]
         proc = subprocess.run(cmd, input=user, capture_output=True, text=True,
                               encoding="utf-8", timeout=self.timeout,
                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -554,11 +617,15 @@ def make_brain(name):
     if name == "claude":
         model = os.environ.get("PVZ_MODEL", "claude-opus-5-5")
         effort = os.environ.get("PVZ_EFFORT", "medium")
-        return ClaudeBrain(model=model, effort=effort)
+        brain = ClaudeBrain(model=model, effort=effort)
+        brain.plan_effort = os.environ.get("PVZ_PLAN_EFFORT", "high")
+        return brain
     if name == "subscription":
-        return ClaudeCodeBrain(model=os.environ.get("PVZ_MODEL") or None,
-                               effort=os.environ.get("PVZ_EFFORT", "medium"),
-                               persistent=os.environ.get("PVZ_PERSISTENT", "1") != "0")
+        brain = ClaudeCodeBrain(model=os.environ.get("PVZ_MODEL") or None,
+                                effort=os.environ.get("PVZ_EFFORT", "medium"),
+                                persistent=os.environ.get("PVZ_PERSISTENT", "1") != "0")
+        brain.plan_effort = os.environ.get("PVZ_PLAN_EFFORT", "high")
+        return brain
     if name == "simple":
         return SimpleBrain()
     raise ValueError(f"unknown brain {name!r} (use 'subscription', 'claude' or 'simple')")

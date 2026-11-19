@@ -1,0 +1,304 @@
+{
+  "lessons": [
+    "Fume_shrooms are the main killers. Put 2-3 per row in cols 1-3 and replace dead ones at once, including rows 0 and 4. This level 6+ fumes died, mostly to footballs.",
+    "Footballs are the most dangerous zombie: they killed fumes in rows 1, 3 and 0-2 in waves 13, 15 and 19-20. Save hypno_shroom, ice_shroom and doom_shroom for them and don't spend them on plain zombies or coneheads.",
+    "Use one-use cards as soon as a clump (football, screen_door, dancers) reaches cols 4-6, before it touches the fume line. Doom in col 4-6 hits the whole clump and ice buys time, but doom leaves a crater that blocks that cell for good.",
+    "Build the economy first (sun_shrooms or sunflowers in cols 0-1) and stop adding producers around wave 4-5. Don't put producers in a row with no fume_shroom, because a leak kills them.",
+    "Put a wall_nut in cols 4-5 in front of the fumes and replace it below 50%. Check every row each wave while the lawn is empty, because once the mowers are spent one leak ends the level.",
+    "Puff_shrooms are free, so use them as col-3 and col-4 fillers. They die to coneheads and screen doors, so replant them every wave.",
+    "Potato_mine needs 15 s to arm and gets eaten if planted late. Plant it 15-20 s before the zombies arrive, at col 4, away from an active fight.",
+    "Pole vaulters jump the first plant. Back up each wall_nut with a second fume_shroom or an armed potato_mine.",
+    "Keep 150+ sun in reserve for waves 8-10 and the final wave so I can replant at once. Fire cherry_bomb on clumps before col 3 instead of holding it.",
+    "Graves block cols 5-8 in some rows, so plan the defense in cols 0-5. Use grave_buster only when I have spare sun or a free card.",
+    "The final wave and waves 8-10 are the biggest, with coneheads, flags, screen doors and dancers together. Rebuild dead fumes and nuts before them."
+  ],
+  "history": [
+    {
+      "level": "2-3",
+      "outcome": "won",
+      "summary": "Won by stacking fume shrooms and potato mines in the middle columns, with mowers as backup, even though many forward puff shrooms were lost.",
+      "lessons": [
+        "Night level with no falling sun: plant sun_shroom and sunflower early in the back columns (cols 1-2) before the first zombies arrive.",
+        "Fume_shroom in cols 3-4 of each row was the main killer; get one in every row that zombies use.",
+        "Potato_mines in cols 4-5 stopped coneheads and screen doors well; replant them as they are used.",
+        "Puff_shrooms are free but die quickly at col 5-6; use them as cheap filler, and don't expect them to hold the line.",
+        "Put wall_nut in front of the fume_shrooms (col 4-5) in the rows that get pressure, because fume range is short.",
+        "Row 1 had no mower and lost a sun_shroom there; keep that row's defense heavier.",
+        "Keep sun for replacing lost plants in the late waves (8-10), when pressure is highest.",
+        "Graves block planting at some tiles, so plan around them."
+      ],
+      "t": "2026-11-19T15:06:28"
+    },
+    {
+      "level": "2-4",
+      "outcome": "lost",
+      "summary": "I lost because coneheads, pole vaulters and screen doors in the final wave overran thin, low-damage defenses (mostly puff_shrooms and a few fume_shrooms) and the mowers were already used up, so row 3 broke through.",
+      "lessons": [
+        "Night level with no falling sun: plant sun_shroom and sunflower early in cols 1-2 before the first zombies arrive. Keep building sun income until about wave 6.",
+        "Fume_shroom in cols 3-4 of each row was the main killer. Get one in every row and add a second in rows under pressure. Puff_shrooms alone can't kill coneheads.",
+        "Armored zombies (conehead, screen_door) beat puff_shrooms: 17 of them died. Don't rely on puffs for damage. Use them only as free fillers in front of fumes.",
+        "Waves 8-9 are the first real break (coneheads killed sun_shrooms and used mowers in rows 0, 1 and 3). Have a fume_shroom plus a wall_nut in every row by wave 7.",
+        "Potato_mines in cols 4-6 kill coneheads and screen doors. Replant them right after each one explodes, and stagger them so one is always armed in each row.",
+        "Put wall_nut at col 4-5 directly in front of the fume_shrooms. Replace it when damaged, since fume range is short.",
+        "Mowers were gone in rows 0-3 by wave 12, leaving no backup for the final wave. Don't let early leaks use them. Kill zombies before col 3.",
+        "Keep a sun reserve (150+) for wave 18-20, which is a huge flag wave with pole vaulters. I ended with only 45 sun and couldn't replace anything. Hold a cherry_bomb for the final wave.",
+        "Pole vaulters jump over the first plant, so a wall_nut doesn't stop them. Put a fume_shroom or potato_mine behind it.",
+        "Sun_shrooms in cols 1-2 were lost to leaks. Once the economy is established (about 8 producers), stop adding producers and spend on fume_shrooms.",
+        "Graves block planting at some tiles, so plan around them. Row 1 had no mower, so keep that row's defense heavier."
+      ],
+      "t": "2026-11-19T15:23:29"
+    },
+    {
+      "level": "2-4",
+      "outcome": "won",
+      "summary": "Won by filling every row with 2-3 fume_shrooms backed by wall_nuts and a sun_shroom economy, plus constantly replanted potato_mines and a final cherry_bomb, which left 4 mowers unused.",
+      "lessons": [
+        "Night level with no falling sun: plant sun_shroom and sunflower early in cols 1-2 before the first zombies arrive, and keep building income until about wave 6.",
+        "Fume_shrooms in cols 2-4 of every row are the main killers. Get at least 2-3 per row. Puff_shrooms alone can't kill coneheads, so use them only as free fillers.",
+        "Replant potato_mines in cols 4-7 right after each one explodes, and stagger them so one is always armed per row. They handled coneheads, screen doors and pole vaulters.",
+        "Put a wall_nut at cols 5-6 directly in front of the fume_shrooms, and replace it when damaged. Fume range is short.",
+        "Pole vaulters jump the first plant, so a wall_nut doesn't stop them. They killed fume_shrooms at col 4 in waves 13-19, so put a potato_mine or a second fume_shroom behind the nut.",
+        "Wave 5-9 leaks hit row 0 first (puff_shroom, sun_shroom, sunflower and the mower were lost). Put a fume_shroom plus a wall_nut in every row, row 0 included, by wave 5.",
+        "Once income is established (about 8 producers), stop adding producers and spend on fume_shrooms, nuts and mines.",
+        "Keep a sun reserve of 150+ for waves 18-20 and hold a cherry_bomb for the final flag wave. It worked: I finished with 125 sun and 4 mowers.",
+        "Replace dead fume_shrooms immediately in the final waves (3-4 died in wave 20). A mower is the last backup, so keep zombies from reaching col 1.",
+        "Graves block planting on some tiles, so plan around them. Row 0 had no mower after wave 6, so keep its defense heavier."
+      ],
+      "t": "2026-11-19T15:32:39"
+    },
+    {
+      "level": "2-5",
+      "outcome": "won",
+      "summary": "Won by building a night economy early, then using fume_shrooms, nuts and mines to hold, with all five mowers used only on the final wave 8.",
+      "lessons": [
+        "Night level with no falling sun: plant sun_shroom and sunflower early in cols 1-2 before the first zombies arrive, and keep building income until about wave 5-6.",
+        "Fume_shrooms in cols 2-4 of every row are the main killers. Get at least 2-3 per row. Puff_shrooms alone can't kill coneheads, so use them only as free fillers.",
+        "Replant potato_mines in cols 4-7 right after each one explodes, and stagger them so one is always armed per row (they take about 15 s to arm).",
+        "Put a wall_nut at cols 5-6 directly in front of the fume_shrooms, and replace it when damaged. Fume range is short.",
+        "Pole vaulters jump the first plant, so a wall_nut doesn't stop them. Put a potato_mine or a second fume_shroom behind the nut.",
+        "Put a fume_shroom plus a wall_nut in every row, row 0 included, by wave 5. Leaks often hit row 0 first.",
+        "Once income is established (about 8 producers), stop adding producers and spend on fume_shrooms, nuts and mines.",
+        "Keep a sun reserve of 150+ for the final waves and hold a cherry_bomb for the final flag wave.",
+        "Replace dead fume_shrooms immediately in the final waves. Mowers are the last backup, so keep zombies from reaching col 1. This level ended with 0 mowers even though I won, so build more defense before the last wave.",
+        "Graves block planting on some tiles (they are heavy in cols 3-6 on this map), so plan around them. Use grave_buster only if there is spare sun and you need the tile.",
+        "Check which rows have lost their mower, and keep those rows' defenses heavier."
+      ],
+      "t": "2026-11-19T15:35:47"
+    },
+    {
+      "level": "2-6",
+      "outcome": "lost",
+      "summary": "I lost because my defense was too thin: the fume_shrooms and puff_shrooms were all in cols 1-3 and got eaten by coneheads, there were no walls, and the mowers were spent by wave 10.",
+      "lessons": [
+        "Night level with no falling sun: plant sun_shroom and sunflower early in cols 0-1 before the first zombies arrive. Keep building income until about wave 5, but don't over-invest, because this loss came from too little defense.",
+        "Fume_shrooms are the main killers. Get 2-3 per row, in cols 3-5 rather than cols 1-2, so zombies are hit long before they reach the producers. This loss had at most one fume per row and every row collapsed.",
+        "Puff_shrooms alone can't stop coneheads, and 8 of them died uselessly. Use them only as cheap fillers, never as the main defense.",
+        "Put a wall_nut in front of the fume_shrooms in every row, in cols 5-6, and replace it when it's damaged. Zombies chewing on the nut stay inside the fume range.",
+        "Replant potato_mines right after each one explodes, and stagger them so one is always armed per row (they take about 15 s to arm). Plant them ahead of the zombies, not at the last second.",
+        "Don't put producers (sun_shroom, sunflower) in cols 1-2 of a row that has no fume_shroom. A leak kills them and wrecks the economy. Rows that lose their mower need heavier defense.",
+        "Pole vaulters jump the first plant, so a wall_nut doesn't stop them. Put a potato_mine or a second fume_shroom behind the nut.",
+        "Keep a sun reserve of 150+ for the late waves, and use the cherry_bomb on a clump of coneheads before they reach cols 1-3. Don't hold it unused.",
+        "Replace dead fume_shrooms immediately. Mowers are the last backup, and once they are spent one leak ends the level.",
+        "Check every row, row 0 included, each wave. Leaks start in rows with zero attackers, so don't leave any row empty.",
+        "Graves block planting in cols 6-8 on this map. Plan around them, and use grave_buster only if there is spare sun."
+      ],
+      "t": "2026-11-19T15:42:07"
+    },
+    {
+      "level": "2-6",
+      "outcome": "lost",
+      "summary": "I lost because I relied on 14 puff_shrooms and only one or two fume_shrooms per row, so coneheads and footballs broke through every row and the mowers ran out by wave 10.",
+      "lessons": [
+        "Night level with no falling sun: plant sun_shroom and sunflower early in cols 0-1 before the first zombies arrive. Keep building income until about wave 5, then switch to defense.",
+        "Fume_shrooms are the main killers. Get 2-3 per row in cols 2-4, which keeps them in range of zombies chewing on a wall_nut. Replace dead ones immediately.",
+        "Puff_shrooms alone can't stop coneheads or footballs, and 14 died uselessly this time. Plant only a few as cheap fillers and spend the sun on fume_shrooms instead.",
+        "Put a wall_nut in front of the fume_shrooms in every row, in cols 5-6, and replace it when it's damaged. Zombies stuck on the nut stay inside the fume range.",
+        "Replant potato_mines right after each one explodes, 15 s before the next zombie arrives, and keep one armed per row. Use them against footballs and pole vaulters.",
+        "Don't put producers (sun_shroom, sunflower) in a row with no fume_shroom. A leak kills them and wrecks the economy.",
+        "Pole vaulters jump the first plant, so a wall_nut doesn't stop them. Put a potato_mine or a second fume_shroom behind the nut.",
+        "Keep a sun reserve of 150+ for the late waves, and cherry_bomb a clump of coneheads or footballs before they reach col 3. I ended with 50 sun and an unused bomb, so don't hold it.",
+        "Check every row, row 0 included, each wave. Leaks start in rows with zero or one attacker, and once the mowers are spent one leak ends the level.",
+        "Graves block planting in cols 6-8 on this map. Plan around them, and use grave_buster only if there is spare sun.",
+        "Waves 8-10 bring many coneheads and footballs together. Have 2+ fume_shrooms plus a wall_nut in every row by wave 6."
+      ],
+      "t": "2026-11-19T15:48:17"
+    },
+    {
+      "level": "2-6",
+      "outcome": "won",
+      "situation": "night",
+      "summary": "Won narrowly: fume_shrooms in cols 1-3 with potato_mines held most waves, but wave 10 broke through and all mowers were spent, leaving only a thin defense and 50 sun at the end.",
+      "plan": "Economy: Plant sun_shrooms first in cols 0-1, add a few sunflowers, and keep building income until about wave 5.\nDefense: Put 2 fume_shrooms per row in cols 2-4. Put a wall_nut in cols 5-6 in front of them. Use puff_shroom as a cheap filler.\nZombies: Place a potato_mine in the football's row, and replant mines after they explode. Use cherry_bomb on a clump of coneheads or the football before col 3.\nReserve: Keep 150+ sun for later waves. Check all 5 rows every wave, and replace dead fume_shrooms and damaged wall_nuts immediately.\nIf a row breaks: Put a wall_nut and an extra fume_shroom there, or use cherry_bomb.",
+      "lessons": [
+        "Night level with no falling sun: plant sun_shroom and sunflower early in cols 0-1 before the first zombies arrive. Keep building income until about wave 5, then switch to defense.",
+        "Fume_shrooms are the main killers. Get 2-3 per row in cols 2-4, and replace dead ones immediately. This level rows 0, 2 and 3 had only 0-1 fume_shrooms late, and wave 10 broke through them.",
+        "Puff_shrooms alone can't stop coneheads or footballs, and 7 died again. Plant only a few as cheap fillers, and spend the sun on fume_shrooms and wall_nuts.",
+        "Put a wall_nut in front of the fume_shrooms in every row, in cols 5-6, and replace it when damaged. Zombies stuck on the nut stay inside fume range. The board at the end showed no wall_nuts in the front rows, so I under-built here.",
+        "Replant potato_mines right after each one explodes, at least 15 s before the next zombie arrives, and keep one armed per row. They are best against footballs and pole vaulters.",
+        "Don't put producers (sun_shroom, sunflower) in a row with no fume_shroom. A leak kills them and wrecks the economy. Both sun_shrooms were lost in wave 10 to zombies that got past the fumes.",
+        "Pole vaulters jump the first plant, so a wall_nut doesn't stop them. Put a potato_mine or a second fume_shroom behind the nut.",
+        "Keep a sun reserve of 150+ for waves 8-10, and cherry_bomb a clump of coneheads or footballs before col 3. I again ended with 50 sun and an unused bomb, so don't hold it.",
+        "Check every row, row 0 included, each wave. Leaks start in rows with zero or one attacker, and once the mowers are spent one leak ends the level. All 4 remaining mowers fired in wave 10.",
+        "Graves block planting in cols 6-8 on this map. Plan around them, and use grave_buster only if there is spare sun.",
+        "Waves 8-10 bring many coneheads and footballs together. Have 2+ fume_shrooms plus a wall_nut in every row by wave 6, and spend spare sun on that rather than on more economy.",
+        "Never leave a row empty of attackers. Rows 0 and 2 had 0 attackers by the end, so I should have rebuilt them before wave 10 arrived."
+      ],
+      "situation_lessons": [
+        "Night: start with sun_shrooms in cols 0-1, then sunflowers. There is no falling sun, so income stops growing once you stop planting producers. Stop adding producers around wave 5.",
+        "Night: put the first fume_shroom in each row in col 2 or 3 before wave 3. It reaches 4 tiles, so it hits zombies chewing a nut in col 5-6.",
+        "Night: puff_shrooms cost 0 sun, so use them as sacrificial blockers in col 3. They gave only brief delays against coneheads and footballs, so don't rely on them for kills.",
+        "Night: potato_mines in col 4 were eaten or exploded in waves 2, 4, 6, 9 and 10. Replant them each time, and use the free mushroom slots before the sun-heavy waves.",
+        "Night: footballs appear from about wave 6 and again in wave 10. Pair a mine with a cherry_bomb in the football's row, and have 150 sun ready when the first one shows up.",
+        "Night: wave 10 is the biggest, and it hit rows 0, 2, 3 and 4 together. Before it, rebuild every dead fume_shroom and wall_nut and keep sun for emergency replants during the wave.",
+        "Night: use the mowers only as a last resort. Treat a spent mower as a failed row and rebuild its defense right away.",
+        "Night: build fume_shroom lines in rows 0 and 2 early. The grave-free cols 0-5 there are enough space for 2 fumes plus a nut."
+      ],
+      "t": "2026-11-19T16:25:44"
+    },
+    {
+      "level": "2-7",
+      "outcome": "won",
+      "situation": "night",
+      "summary": "I won because the plan worked: sun_shrooms paid for 2-3 fume_shrooms in every row, with wall_nuts and puff_shroom blockers in front, so only one fume_shroom died before wave 20 and 5 mowers were left.",
+      "plan": "Economy: plant sun_shrooms in cols 0-1 first, then a few sunflowers. Stop adding producers around wave 4-5.\nDefense: 2 fume_shrooms per row in cols 2-4, with a wall_nut in col 5-6 in front of them. Rows with producers need fumes first.\nZombies: fumes go through the screen door. Put a potato_mine in col 4 for the football and cherry_bomb a clump of coneheads before col 3. Use puff_shrooms as free col-3 blockers.\nRow breaking: replant fumes and nuts at once and keep 150+ sun in reserve. Check every row each wave, row 0 included.",
+      "lessons": [
+        "Fume_shrooms are the main killers. Put 2-3 per row in cols 2-4 and replace dead ones immediately. Holding them in every row, row 0 and row 4 included, won this level.",
+        "Build the economy first. Put sun_shrooms in cols 0-1 and add a few sunflowers before the first zombies arrive. Stop adding producers around wave 4-5 and put the sun into defense.",
+        "Put a wall_nut in cols 5-6 in front of the fume_shrooms in every row, and replace it once it is damaged. Zombies stuck chewing the nut stay inside fume range (4 tiles).",
+        "Don't put producers in a row with no fume_shroom. A leak kills them and wrecks the economy. Rows with producers need fumes first.",
+        "Puff_shrooms are free, so use them as col-3 blockers and fillers. They can't kill coneheads or footballs alone, so spend real sun on fumes and nuts.",
+        "Plant a potato_mine in col 4 against footballs and pole vaulters. Replant it right after it explodes, at least 15 s before the next zombie arrives.",
+        "Pole vaulters jump the first plant, so a wall_nut alone doesn't stop them. Put a potato_mine or a second fume_shroom behind the nut.",
+        "Keep 150+ sun in reserve for waves 8-10 and for the final wave, so you can replant right away. Use cherry_bomb on a clump of coneheads or footballs before col 3 instead of holding it. Ending this level with 300 sun and an unused bomb was wasteful.",
+        "Check every row each wave, row 0 included. Leaks start in rows with 0-1 attackers, and once the mowers are spent one leak ends the level.",
+        "Graves block planting in cols 6-8 on this map, so plan the defense in cols 0-5. Use grave_buster only when there is spare sun.",
+        "The biggest waves are around 8-10 and the last wave (20), with coneheads, screen doors and footballs together. Have 2+ fumes plus a nut in every row before them. Rebuild any dead fume or nut right after each wave.",
+        "Footballs are the late threat: in wave 20 one killed two wall_nuts in row 3 before it reached the fumes. Keep a mine armed in the football's row, or bomb it, rather than counting on nuts."
+      ],
+      "situation_lessons": [
+        "Night: start with sun_shrooms in cols 0-1, then a few sunflowers. There is no falling sun, so income stops growing once you stop planting producers. Stop around wave 4-5.",
+        "Night: put the first fume_shroom in each row in col 2 or 3 before wave 3, then add a second one. Rows with 3 attackers held easily. Fumes go through screen doors.",
+        "Night: use puff_shrooms as free col-3 blockers. They bought time for the fumes behind them, but they died in the last wave, so replant them.",
+        "Night: put a potato_mine in col 4 for footballs and cherry_bomb a clump of coneheads before col 3. Replant mines after each use and keep a mine armed in each row.",
+        "Night: the usual pressure points are wave 9-10 and wave 20. Before them, rebuild all dead fumes and nuts and keep 150+ sun for emergency replants.",
+        "Night: the winning build was cols 2-4 fumes with a puff_shroom in col 3 and a nut in col 5. Row 4 was already limited by graves, so it could only hold 3 fumes and puffs.",
+        "Night: use the mowers only as a last resort. Treat a spent mower as a failed row and rebuild its defense right away. Losing none here shows the build was strong enough.",
+        "Night: wall_nuts at col 5-6 take the football hits. Replace damaged ones before the final wave and keep 2 free sun slots for emergency fume replants."
+      ],
+      "t": "2026-11-19T16:40:12"
+    },
+    {
+      "level": "2-8",
+      "outcome": "won",
+      "situation": "night",
+      "summary": "Won narrowly: the fume_shroom-heavy build with puff blockers held, but row 3 leaked early, all mowers were spent by the final wave, and I ended with no nuts and few fumes in the back rows, so the win was close.",
+      "plan": "Economy: sun_shrooms in cols 0-1 first, then 2-3 sunflowers; stop adding producers around wave 4-5.\nDefense: fume_shroom in col 2 or 3 of every row before wave 3, then a second one; puff_shroom in col 3 as a free blocker.\nWall_nut in col 5 in front of the fumes; replace it when damaged.\nZombies: dancing and coneheads get fume fire; cherry_bomb a clump (dancer plus backups) before col 3. Mines in col 4 as backup.\nIf a row breaks: replant fume and nut right away, keep 150+ sun in reserve, and don't put producers in rows without fumes.",
+      "lessons": [
+        "Fume_shrooms are the main killers. Put 2-3 per row in cols 1-4 and replace dead ones immediately, in row 0 and row 4 too.",
+        "Build the economy first. Put sun_shrooms in cols 0-1 and add a few sunflowers before the first zombies arrive. Stop adding producers around wave 4-5 and put the sun into defense.",
+        "Put a wall_nut in cols 5-6 in front of the fume_shrooms in every row, and replace it once it is damaged. Zombies stuck chewing the nut stay inside fume range (4 tiles). This level only one nut was left, at 22%, by wave 10, and that was too few.",
+        "Check every row each wave and fix thin rows immediately. Row 3 lost a fume and a sun_shroom at wave 5 with only 1 zombie and spent its mower, and by wave 10 all mowers were gone. Once the mowers are spent, one leak ends the level.",
+        "Don't put producers in a row with no fume_shroom. A leak kills them and wrecks the economy.",
+        "Puff_shrooms are free, so use them as col-3 and col-4 blockers and fillers. They can't kill coneheads alone and they die in waves 9-10, so replant them after every wave.",
+        "Plant a potato_mine in col 4 against footballs and pole vaulters. Replant it right after it explodes, at least 15 s before the next zombie arrives.",
+        "Pole vaulters jump the first plant, so a wall_nut alone doesn't stop them. Put a potato_mine or a second fume_shroom behind the nut.",
+        "Keep 150+ sun in reserve for waves 8-10 so you can replant at once. I ended with 70 sun and couldn't afford a fume or a bomb at the end, so spend the surplus earlier on nuts and fumes but not down to zero.",
+        "Use cherry_bomb on a clump (dancer plus backups, coneheads, footballs) before col 3 instead of holding it. It was never used here, so plan to fire it when a clump arrives.",
+        "Graves block planting in cols 5-8 in some rows, so plan the defense in cols 0-5. Use grave_buster only when there is spare sun.",
+        "The biggest waves are 8-10 and the final wave, with coneheads, dancers and footballs together. Have 2+ fumes plus a nut in every row before them and rebuild dead ones after each wave."
+      ],
+      "situation_lessons": [
+        "Night: start with sun_shrooms in cols 0-1, then a few sunflowers. There is no falling sun, so income stops growing once you stop planting producers. Stop around wave 4-5.",
+        "Night: put the first fume_shroom in each row in col 2 or 3 before wave 3, then add a second one. Rows with 3 attackers held; rows with 2 attackers (rows 0, 2, 4) were the ones that broke or nearly broke.",
+        "Night: use puff_shrooms as free col-3 blockers. They bought time for the fumes behind them, but 7 died, mostly in waves 9-10, so keep replanting them each wave.",
+        "Night: the dancing zombie with backup dancers plus conehead clumps in rows 2-4 are the late threat. Bomb or mine them in col 4-5 and keep fumes behind a nut.",
+        "Night: the usual pressure points are waves 9-10. Before then, rebuild all dead fumes and nuts, and keep 150+ sun for emergency replants.",
+        "Night: a damaged fume (12%) or nut (22%) at wave 10 means I didn't repair between waves. Replace damaged fumes and nuts each wave while the lawn is empty.",
+        "Night: the winning build was cols 1-4 fumes with a puff_shroom in col 3 and a nut in col 5, but row 3 and row 4 had empty spots in cols 0-2. Fill every row's col 1-3 with fumes before adding extras elsewhere.",
+        "Night: don't count on mowers. Treat any fired or lost mower as a failed row and rebuild its defense right away with a fume plus a nut."
+      ],
+      "t": "2026-11-19T16:46:40"
+    },
+    {
+      "level": "2-9",
+      "outcome": "won",
+      "situation": "night",
+      "summary": "Won by the skin of our teeth: the 3-fume-per-row build in cols 1-4 with nuts and puffs held through wave 19, but the final wave burned all five mowers and left row 0 nearly broken, with damaged nuts left unrepaired.",
+      "plan": "Economy: sun_shrooms in cols 0-1 first, then 2-3 sunflowers; stop producers around wave 4-5.\nDefense: 2-3 fume_shrooms per row in cols 1-4, puff_shroom in col 3 as a free blocker, wall_nut in col 5 in front of the fumes.\nZombies: fumes pass through screen doors; cherry_bomb the dancer plus backups or conehead clumps before col 3; potato_mine in col 4 as backup.\nIf a row breaks: replace the fume and nut at once, and keep 150+ sun in reserve for waves 8-10 and the final wave.\nBetween waves, repair damaged nuts and fumes and replant puffs.",
+      "lessons": [
+        "Fume_shrooms are the main killers. Put 3 per row in cols 1-3 (or 1-4) and replace dead ones immediately, in row 0 and row 4 too.",
+        "Build the economy first: sun_shrooms in cols 0-1 and a few sunflowers before the first zombies arrive. Stop adding producers around wave 4-5 and put the sun into defense.",
+        "Put a wall_nut in cols 5-6 in front of the fumes in every row, and replace it when it's damaged. Zombies chewing the nut stay inside fume range (4 tiles). Final-wave board had nuts at 2%, 23%, 24% and 26%, so I should have replaced them between waves.",
+        "Check every row each wave and repair damaged nuts and fumes while the lawn is empty. Once the mowers are spent, one leak ends the level.",
+        "Don't put producers in a row with no fume_shroom. A leak kills them and wrecks the economy.",
+        "Puff_shrooms are free, so use them as col-3 and col-4 blockers and fillers. They die to coneheads (5 died here), so replant them every wave.",
+        "Potato_mine needs 15 s to arm and gets eaten if planted late or next to zombies (2 were eaten before arming). Plant it at least 15-20 s before the zombies arrive and well behind the front, such as col 4, not in the middle of an active fight.",
+        "Pole vaulters jump the first plant, so a wall_nut alone doesn't stop them. Put a second fume_shroom or an armed potato_mine behind the nut.",
+        "Keep 150+ sun in reserve for waves 8-10 and the final wave so I can replant at once. I ended with 375 sun unspent, so I could have afforded more nuts and a second cherry_bomb-style response earlier.",
+        "Fire cherry_bomb on a clump (dancer plus backups, coneheads, footballs) before col 3 instead of holding it. This level I used only one, in the final wave, and used it on a crowded cell in col 7.",
+        "Graves block planting in cols 5-8 in some rows, so plan the defense in cols 0-5. Use grave_buster only when there is spare sun.",
+        "The final wave and waves 8-10 are the biggest, with coneheads, flags, screen doors and dancers together. Rebuild all dead fumes and nuts and top up nuts to full before them."
+      ],
+      "situation_lessons": [
+        "Night: start with sun_shrooms in cols 0-1, then a few sunflowers. There is no falling sun, so income stops growing once you stop planting producers (stop at wave 4-5).",
+        "Night: this winning build was col 0 sun_shrooms in rows 1-4, 2 fumes in cols 1-2 in every row, puffs in col 3-4, nuts in cols 5-6. Rows with 3+ attackers held, and row 0 was thinnest (no sun_shroom, only fumes) and took the worst damage in wave 20.",
+        "Night: the final wave is a flood of coneheads, flags, screen doors and dancers in every row at once, and it burned all 5 mowers. Before wave 20, have full-health nuts in every row, a third fume per row, and 2 cherry_bombs ready if possible.",
+        "Night: puff_shrooms in col 3 died to coneheads in waves 5-8 (4 losses). They still buy time, but replant them each wave since they cost 0 sun.",
+        "Night: with 375 sun unspent at the end, I under-spent. Convert surplus sun into extra fumes and fresh nuts in rows 0-1 by wave 15, since they were damaged (nut 2%, 23%) and ended weakest.",
+        "Night: the dancing zombie with backup dancers and conehead clumps are the late threat. Bomb them in cols 4-5 before they reach the fumes, not in col 7 once they are mixed with a crowd.",
+        "Night: replace a fume or nut at once when it dies in a row, in the lull between waves, rather than during the final rush when replants get eaten (potato_mine eaten 3 s after planting).",
+        "Night: don't count on mowers. Treat any fired or lost mower as a failed row and rebuild its defense right away with a fume plus a nut."
+      ],
+      "t": "2026-11-19T16:57:32"
+    },
+    {
+      "level": "2-10",
+      "outcome": "won",
+      "situation": "night conveyor",
+      "summary": "I won by the narrowest margin: the conveyor gave free doom_shrooms, ice_shrooms and hypno_shrooms that cleared the big waves, but all five mowers were spent and the fume line was nearly wiped out by wave 20.",
+      "plan": "Economy: Start with 50 sun, so plant a sun_shroom or sunflower first in cols 0-1 of rows 1-3. Add producers until about wave 4, then put all sun into defense. If this is a conveyor level, use each card as it arrives and don't let the belt fill.\nLayout: Graves block cols 4-9 in several rows, so defend in cols 0-5. Put 2-3 fume_shrooms per row in cols 1-3 (col 4 where it's open), with puff_shrooms as cheap blockers or fillers in col 3-4. Put wall_nuts in cols 4-5 in front of the fumes.\nZombies: Expect basic zombies and coneheads early, then pole vaulters, screen doors, footballs, dancers and flags in waves 8-10 and the final wave. Back up every nut with a second fume or an armed potato_mine in col 3-4, planted 15 s or more before the zombies arrive. Fire cherry_bomb on clumps before col 3.\nMaintenance: Check every row between waves. Replace damaged nuts (under 50%) and dead fumes at once, including rows 0 and 4. Keep 150+ sun in reserve for waves 8-10 and the final wave. Don't put producers in a row without a fume_shroom.\nBreak plan: If a row starts to leak, drop a cherry_bomb or potato_mine on the front zombies, then replant a fume and a nut. Use grave_buster only when I have spare sun.",
+      "lessons": [
+        "Fume_shrooms are the main killers. Put 2-3 per row in cols 1-3 and replace dead ones at once, including rows 0 and 4. This level 6+ fumes died, mostly to footballs.",
+        "Footballs are the most dangerous zombie: they killed fumes in rows 1, 3 and 0-2 in waves 13, 15 and 19-20. Save hypno_shroom, ice_shroom and doom_shroom for them and don't spend them on plain zombies or coneheads.",
+        "Use one-use cards as soon as a clump (football, screen_door, dancers) reaches cols 4-6, before it touches the fume line. Doom in col 4-6 hits the whole clump and ice buys time, but doom leaves a crater that blocks that cell for good.",
+        "Build the economy first (sun_shrooms or sunflowers in cols 0-1) and stop adding producers around wave 4-5. Don't put producers in a row with no fume_shroom, because a leak kills them.",
+        "Put a wall_nut in cols 4-5 in front of the fumes and replace it below 50%. Check every row each wave while the lawn is empty, because once the mowers are spent one leak ends the level.",
+        "Puff_shrooms are free, so use them as col-3 and col-4 fillers. They die to coneheads and screen doors, so replant them every wave.",
+        "Potato_mine needs 15 s to arm and gets eaten if planted late. Plant it 15-20 s before the zombies arrive, at col 4, away from an active fight.",
+        "Pole vaulters jump the first plant. Back up each wall_nut with a second fume_shroom or an armed potato_mine.",
+        "Keep 150+ sun in reserve for waves 8-10 and the final wave so I can replant at once. Fire cherry_bomb on clumps before col 3 instead of holding it.",
+        "Graves block cols 5-8 in some rows, so plan the defense in cols 0-5. Use grave_buster only when I have spare sun or a free card.",
+        "The final wave and waves 8-10 are the biggest, with coneheads, flags, screen doors and dancers together. Rebuild dead fumes and nuts before them."
+      ],
+      "situation_lessons": [
+        "Conveyor night level: the belt gives only free single-use cards (grave_buster, doom_shroom, ice_shroom, hypno_shroom, scaredy_shroom, fume_shroom, puff_shroom). There is no sun economy, so the plan to build sun_shrooms was irrelevant here. Use each card on arrival and don't let the belt fill.",
+        "Don't waste grave_buster cards early. Use them only when the belt is near full and nothing better is available, since they take a few seconds and graves in cols 6-8 don't matter.",
+        "Hold doom_shroom and ice_shroom for waves with footballs, screen doors and dancers (waves 10+). They are very slow to recharge, so keep one in hand for the final wave instead of using every copy early.",
+        "Plant fume_shrooms whenever they arrive and fill every row evenly. Rows 0 and 4 and row 2 ended with only 1-3 attackers, and the weakest row broke first. Scaredy_shrooms in cols 0-2 died constantly, so treat them as filler rather than a defense.",
+        "Put hypno_shroom on the front football or screen_door in a row, so it turns the strongest zombie into a blocker. Place it in cols 4-5 in front of the fumes, not behind them.",
+        "All five mowers were gone by wave 20, so the last waves have no safety net. Keep at least one doom or ice for the final wave and use the mowers' help only as a last resort."
+      ],
+      "t": "2026-11-19T17:05:41"
+    }
+  ],
+  "sections": {
+    "night": [
+      "Night: start with sun_shrooms in cols 0-1, then a few sunflowers. There is no falling sun, so income stops growing once you stop planting producers (stop at wave 4-5).",
+      "Night: this winning build was col 0 sun_shrooms in rows 1-4, 2 fumes in cols 1-2 in every row, puffs in col 3-4, nuts in cols 5-6. Rows with 3+ attackers held, and row 0 was thinnest (no sun_shroom, only fumes) and took the worst damage in wave 20.",
+      "Night: the final wave is a flood of coneheads, flags, screen doors and dancers in every row at once, and it burned all 5 mowers. Before wave 20, have full-health nuts in every row, a third fume per row, and 2 cherry_bombs ready if possible.",
+      "Night: puff_shrooms in col 3 died to coneheads in waves 5-8 (4 losses). They still buy time, but replant them each wave since they cost 0 sun.",
+      "Night: with 375 sun unspent at the end, I under-spent. Convert surplus sun into extra fumes and fresh nuts in rows 0-1 by wave 15, since they were damaged (nut 2%, 23%) and ended weakest.",
+      "Night: the dancing zombie with backup dancers and conehead clumps are the late threat. Bomb them in cols 4-5 before they reach the fumes, not in col 7 once they are mixed with a crowd.",
+      "Night: replace a fume or nut at once when it dies in a row, in the lull between waves, rather than during the final rush when replants get eaten (potato_mine eaten 3 s after planting).",
+      "Night: don't count on mowers. Treat any fired or lost mower as a failed row and rebuild its defense right away with a fume plus a nut."
+    ],
+    "night conveyor": [
+      "Conveyor night level: the belt gives only free single-use cards (grave_buster, doom_shroom, ice_shroom, hypno_shroom, scaredy_shroom, fume_shroom, puff_shroom). There is no sun economy, so the plan to build sun_shrooms was irrelevant here. Use each card on arrival and don't let the belt fill.",
+      "Don't waste grave_buster cards early. Use them only when the belt is near full and nothing better is available, since they take a few seconds and graves in cols 6-8 don't matter.",
+      "Hold doom_shroom and ice_shroom for waves with footballs, screen doors and dancers (waves 10+). They are very slow to recharge, so keep one in hand for the final wave instead of using every copy early.",
+      "Plant fume_shrooms whenever they arrive and fill every row evenly. Rows 0 and 4 and row 2 ended with only 1-3 attackers, and the weakest row broke first. Scaredy_shrooms in cols 0-2 died constantly, so treat them as filler rather than a defense.",
+      "Put hypno_shroom on the front football or screen_door in a row, so it turns the strongest zombie into a blocker. Place it in cols 4-5 in front of the fumes, not behind them.",
+      "All five mowers were gone by wave 20, so the last waves have no safety net. Keep at least one doom or ice for the final wave and use the mowers' help only as a last resort."
+    ]
+  }
+}

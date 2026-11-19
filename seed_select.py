@@ -157,6 +157,16 @@ def choose(ctl, brain, log=print):
     return forced + names, pick.get("reasoning", ""), warned
 
 
+# Crazy Dave's "Upgrade to N seed slots?" offer during an intro (paid in game coins).
+# A normal player accepts it; the bot does too.
+SLOT_OFFER_POINTS = ((330, 470), (700, 470), (515, 520))
+SLOT_OFFER_YES = (423, 497)
+
+
+def slot_offer(img):
+    return all(70 < r < 125 and b - r >= 25 for (r, g, b) in (img.getpixel(p) for p in SLOT_OFFER_POINTS))
+
+
 # The stone "Warning" dialog (e.g. "You haven't chosen any sun producing plants") that the
 # game shows after Let's Rock. The player's loadout stands: we answer Yes and tell the
 # player afterwards, through the journal timeline.
