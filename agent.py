@@ -26,6 +26,7 @@ import argparse
 import json
 import sys
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
@@ -35,14 +36,15 @@ import win32gui
 
 import offsets as O
 import plant_info
-from brains import describe, make_brain, x_to_col
+from brains import action_text, describe, make_brain, x_to_col
 from journal import Journal, LevelRecorder, situation_of
 from controller import Controller
 
 ROOT = Path(__file__).parent
 TICK = 0.15                # main loop period (sun pickup, plan execution)
 MIN_GAP = 4.0              # never start a new AI request sooner than this after the last one
-MAX_GAP = 30.0             # re-plan at least this often while something is affordable
+REJECTED_GAP = 8.0         # re-ask this soon when every action of the last plan was rejected
+MAX_GAP = 30.0             # check lower-priority changes after this much time
 FINAL_REWARDS = {7, 8, 9, 10, 11, 12, 13, 14, 15, 18}   # seed packet, note, trophy, money bag...
 MAX_ACTIONS = 5            # length of the AI's build queue
 UPGRADES = {"gatling_pea": "repeater", "twin_sunflower": "sunflower", "gloom_shroom": "fume_shroom",
@@ -116,11 +118,12 @@ def validate(action, state):
         elif cell == O.CELL_POOL and "lily_pad" not in plants and name != "cattail" and not (
             name == "pumpkin" and occupant == "cattail"
         ):
-            return "reject", "plant a Lily Pad here first", None
+            return "reject", (f"({row},{col}) is water: plant lily_pad at ({row},{col}) first, "
+                              f"then {name} at ({row},{col}) once the pad is there"), None
         elif state.get("terrain") in ("roof", "boss") and "flower_pot" not in plants:
             return "reject", "plant a Flower Pot here first", None
-        elif name in {"spikeweed", "spikerock"} and plants.keys() & SUPPORTS:
-            return "reject", f"{name} requires solid ground", None
+        elif name in {"spikeweed", "spikerock", "potato_mine"} and plants.keys() & SUPPORTS:
+            return "reject", f"{name} can't go on a Lily Pad or Flower Pot; it needs solid ground", None
         elif name == "pumpkin":
             if "pumpkin" in plants or occupant == "cob_cannon":
                 return "reject", f"cannot cover ({row},{col}) with a pumpkin", None
@@ -145,8 +148,11 @@ def validate(action, state):
 # When is a new AI decision worth asking for?
 # ---------------------------------------------------------------------------
 
-def affordable(state):
-    return {s["name"] for s in state["seeds"] if s["ready"] and (s["cost"] or 0) <= state["sun"]}
+def decision_context(state):
+    ready = Counter((s["name"], s["cost"] or 0) for s in state["seeds"]
+                    if s["ready"] and not s["name"].startswith("unknown")
+                    and (s["cost"] or 0) <= state["sun"])
+    return threats(state), ready, tuple(state.get("wave", ())), has_vases(state)
 
 
 def has_vases(state):
@@ -169,6 +175,38 @@ def important_change(old, new):
     old_z, old_p, old_m = old
     new_z, new_p, new_m = new
     return bool(new_z - old_z) or bool(old_p - new_p) or old_m != new_m
+
+
+def decision_reason(current, previous, *, conveyor, queued, completed, since, fruitless, retry=False,
+                    rejected=False):
+    current_threats, ready, _, vases = current
+    if since < MIN_GAP:
+        return None
+    if previous is None:
+        return "first_board"
+    old_threats, old_ready, _, _ = previous
+    can_act = bool(ready) or vases
+    if can_act and important_change(old_threats, current_threats):
+        return "threat_changed"
+    new_cards = ready - old_ready
+    if not queued and conveyor and new_cards:
+        return "card_available"
+    if fruitless >= 3 and since < MAX_GAP:
+        return None
+    # Every action of the last plan was rejected (cell taken, out of range...): let the player
+    # see why and try again soon, instead of idling until the board changes.
+    if not queued and rejected and since >= REJECTED_GAP:
+        return "plan_rejected"
+    can_buy = any(cost > 0 for _, cost in ready) or (conveyor and bool(ready)) or vases
+    if not queued and completed and can_buy:
+        return "plan_completed"
+    if not queued and any(cost > 0 for _, cost in new_cards):
+        return "card_available"
+    if since >= MAX_GAP and retry:
+        return "retry"
+    if since >= MAX_GAP and can_buy and current != previous:
+        return "board_changed"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +243,7 @@ class Agent:
         self.queue = []
         self.had_plan = False
         self.planted_since_ask = 0
+        self.rejected_since_ask = 0
         self.countered_boss_projectile = None
         self.plant_seen = {}           # (row, col, type) -> when it was first seen
         self.sun_gains = []            # (time, sun gained) over the last minute
@@ -541,13 +580,19 @@ class Agent:
             self.queue.pop(0)
             desc = json.dumps({k: v for k, v in action.items() if v is not None})
             if status == "reject":
+                self.rejected_since_ask = getattr(self, "rejected_since_ask", 0) + 1
                 result = f"SKIPPED {desc}: {reason}"
             else:
                 ok = self.perform(action, seed, state)
                 self.planted_since_ask += ok
                 result = f"{'OK' if ok else 'FAILED (click did not register)'} {desc}"
             print("    " + result)
-            self.recent = (self.recent + [result])[-20:]
+            feedback = f"{result.split(' ', 1)[0]} {action_text(action)}"
+            if status == "reject":
+                feedback += f": {reason}"
+            elif not ok:
+                feedback += ": click did not register"
+            self.recent = (self.recent + [feedback])[-20:]
             self.log(kind="action", action=action, result=result)
 
     def click_reward(self, state):
@@ -616,41 +661,42 @@ class Agent:
         except OSError as error:
             self.log(kind="screenshot_error", level=level, error=str(error))
 
-    def ask_brain(self, state, recent, queue):
+    def ask_brain(self, state, recent, queue, trigger):
         """Runs in the background thread."""
         t0 = time.time()
         try:
             decision = self.brain.decide(state, recent, queue)
         except Exception as e:  # noqa: BLE001 - keep playing if one call fails
-            decision = {"reasoning": f"(brain error: {type(e).__name__}: {e})", "actions": queue,
-                        "_error": True}
+            decision = {"reasoning": f"(brain error: {type(e).__name__}: {e})", "_error": True}
         decision["_think"] = round(time.time() - t0, 2)
         decision["_state"] = state
+        decision["_trigger"] = trigger
+        decision["_usage"] = self.usage_fields()
         return decision
 
     def apply_decision(self, decision):
         self.decisions += 1
-        self.queue = [a for a in decision.get("actions", []) if a.get("type") in ACTION_TYPES]
-        self.queue = self.queue[:MAX_ACTIONS]
-        self.had_plan = bool(self.queue)
+        if not decision.get("_error"):
+            self.queue = [a for a in decision.get("actions", []) if a.get("type") in ACTION_TYPES][:MAX_ACTIONS]
+            self.had_plan = bool(self.queue)
         plan = ", ".join(f"{a.get('seed', a['type'])}@{a.get('row')},{a.get('col')}"
                          for a in self.queue) or "nothing for now"
         self.show(f"[{self.decisions}] ({decision['_think']}s) {decision.get('reasoning', '')}\n"
                   f"    plan: {plan}")
-        usage = getattr(self.brain, "last_usage", None)
         self.log(kind="decision", n=self.decisions, think_seconds=decision["_think"],
                  state=decision["_state"], prompt=decision.get("_prompt"),
+                 trigger=decision.get("_trigger"),
                  decision={k: v for k, v in decision.items() if not k.startswith("_")},
-                 usage=usage.to_dict() if hasattr(usage, "to_dict") else usage)
+                 **decision["_usage"])
 
     def play(self):
-        last_threats, last_ask_t = None, 0.0
-        last_available = set()
+        previous_context, last_ask_t = None, 0.0
         last_reward_click = 0.0
         awaiting_result = False
         unreadable_since = None
         brain_errors = 0
         pending = None
+        interrupted = False
         fruitless = 0            # AI plans in a row where nothing could be planted
         self.board_at_start = self.reader.board()
         level = self.reader.level_info(self.board_at_start)["level"]
@@ -736,41 +782,36 @@ class Agent:
                     if not self.readable(state):
                         time.sleep(TICK)
                         continue
-                    now_threats = threats(state)
                     now = time.monotonic()
-                    since = now - last_ask_t
-                    available = affordable(state)
-                    can_buy = bool(available) or has_vases(state)
-                    plan_done = not self.queue and self.had_plan and can_buy
-                    first = last_threats is None
-                    new_card = (state.get("conveyor") or state.get("special") == "vases") and bool(
-                        available - last_available
+                    context = decision_context(state)
+                    trigger = decision_reason(
+                        context, previous_context,
+                        conveyor=state.get("conveyor") or state.get("special") == "vases",
+                        queued=bool(self.queue), completed=self.had_plan and self.planted_since_ask > 0,
+                        since=now - last_ask_t, fruitless=fruitless, retry=brain_errors > 0,
+                        rejected=self.had_plan and self.planted_since_ask == 0 and self.rejected_since_ask > 0,
                     )
-                    # A board change only matters once something can be planted; until
-                    # then the player could only answer "wait". The change isn't lost:
-                    # last_threats isn't updated, so it still counts when sun arrives.
-                    due = since >= MIN_GAP and (first or plan_done or (new_card and not self.queue)
-                                                or (important_change(last_threats, now_threats) and can_buy)
-                                                or (since >= MAX_GAP and can_buy))
-                    # Normal decks can plan ahead for recharge and sun. Empty
-                    # conveyors and vases give the player nothing to use.
                     has_usable_deck = any(not s["name"].startswith("unknown") for s in state["seeds"])
-                    if not (has_usable_deck or has_vases(state)) or (
-                        fruitless >= 3 and since < MAX_GAP and not new_card
-                    ):
-                        due = False
-                    if due:
-                        if self.decisions:
+                    if trigger and (has_usable_deck or context[3]):
+                        if previous_context is not None:
                             fruitless = fruitless + 1 if self.planted_since_ask == 0 else 0
                         self.planted_since_ask = 0
-                        pending = pool.submit(self.ask_brain, state, list(self.recent), list(self.queue))
-                        last_threats, last_ask_t, last_available = now_threats, now, available
+                        self.rejected_since_ask = 0
+                        pending = pool.submit(self.ask_brain, state, list(self.recent), list(self.queue), trigger)
+                        previous_context, last_ask_t = context, now
 
                 time.sleep(TICK)
+        except KeyboardInterrupt:
+            interrupted = True
+            raise
         finally:
             # A completed level can have an in-flight decision. Keep it from
             # racing the next level's chooser for the same player's usage.
-            pool.shutdown(wait=self.levels > 1 or self.retries > 0, cancel_futures=True)
+            pool.shutdown(wait=not interrupted, cancel_futures=True)
+            if pending is not None and pending.done() and not pending.cancelled():
+                decision = pending.result()
+                self.log(kind="unused_decision", trigger=decision["_trigger"],
+                         think_seconds=decision["_think"], **decision["_usage"])
 
     def play_levels(self):
         wins = 0
@@ -781,6 +822,9 @@ class Agent:
             journal = getattr(self, "journal", None)
             if hasattr(self, "brain"):
                 self.brain.plan = None       # written fresh for every attempt
+                set_loadout = getattr(self.brain, "set_loadout", None)
+                if set_loadout:
+                    set_loadout([], None)
                 if journal:
                     self.brain.notes = journal.prompt_block()
             if not self.get_to_playing(previous_level=last_win, retry=retry or self.retries > 0):
@@ -801,12 +845,15 @@ class Agent:
             self.log(kind="level_start", **info)
             if hasattr(self, "brain"):
                 self.brain.level = level
+                if set_loadout:
+                    loadout = [] if info.get("conveyor") else list(getattr(self, "loadout", []))
+                    set_loadout(loadout, level)
                 if journal:
                     self.brain.notes = journal.prompt_block(situation)
                 if self.brain.plan is None and info.get("special") != "whack":
                     self.write_plan(label)
                 reset_brain = getattr(self.brain, "reset", None)
-                if reset_brain:
+                if reset_brain and info.get("special") != "whack":
                     reset_brain()  # fresh conversation per level, with this level's journal and plan
             self.recorder = LevelRecorder(label, getattr(self, "loadout", []))
             if getattr(self, "loadout_warning", False):

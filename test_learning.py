@@ -10,6 +10,15 @@ from test_campaign import board, plant, seed
 
 
 class PromptTests(unittest.TestCase):
+    def test_compact_prompt_preserves_pending_moves_and_recharge(self):
+        state = board()
+        seed(state, "potato_mine", ready=False)["recharge"] = [1000, 3000]
+        queued = [{"type": "plant", "seed": "potato_mine", "row": 4, "col": 0}]
+        short = brains.describe(state, [], queued, compact=True)
+        self.assertLess(len(short), len(brains.describe(state, [], queued)))
+        self.assertIn("plant potato_mine at (4,0)", short)
+        self.assertIn("ready in 20s", short)
+
     def test_no_hand_written_strategy(self):
         text = brains.SYSTEM_PROMPT + brains.PICK_SYSTEM
         for coaching in ("Wall-nut in col", "Sunflowers in cols", "6-8 Sunflowers", "UNDEFENDED",
@@ -204,6 +213,18 @@ class PlanAndFactsTests(unittest.TestCase):
         self.assertIn("football: Wears football armour", calls[0][1])
         self.assertIn("Fume-shrooms in cols 3-4.", b.system(brains.SYSTEM_PROMPT))
 
+    def test_fixed_loadout_facts_move_to_the_system_prompt(self):
+        b = brains.SimpleBrain()
+        b.set_loadout(["puff_shroom"], 16)
+        self.assertIn("puff_shroom: Free mushroom", b.system(brains.SYSTEM_PROMPT))
+        s = board(terrain="night")
+        s["level"] = 16
+        seed(s, "puff_shroom")
+        self.assertNotIn("puff_shroom: Free mushroom", brains.describe(s, [], None, b.known_plants))
+        self.assertIn("puff_shroom: Free mushroom", brains.describe(s, []))
+        b.set_loadout([], 20)                        # conveyor: facts stay on each board
+        self.assertEqual(b.knowledge, "")
+
     def test_board_shows_recharge_health_mines_zombies_and_sun_rate(self):
         s = board()
         s["level"] = 16
@@ -275,6 +296,81 @@ class JournalSectionTests(unittest.TestCase):
             md = (j.folder / "lessons.md").read_text(encoding="utf-8")
             self.assertIn("## Night levels", md)
             self.assertIn("Plan: my plan", md)
+
+
+class DecisionSchedulingTests(unittest.TestCase):
+    def test_failed_answer_keeps_live_queue(self):
+        from test_campaign import operator
+
+        op = operator()
+        pending_move = {"type": "plant", "seed": "sunflower", "row": 0, "col": 0}
+        op.queue = [pending_move]
+        op.apply_decision({"_error": True, "_usage": {"usage": None}, "_think": 1, "_state": board()})
+        self.assertEqual(op.queue, [pending_move])
+
+    def test_waits_on_same_board_but_wakes_when_a_seed_becomes_affordable(self):
+        from agent import decision_context, decision_reason
+
+        state = board()
+        seed(state, "sunflower", cost=50)
+        seed(state, "peashooter", cost=100)
+        state["sun"] = 50
+        previous = decision_context(state)
+        options = dict(conveyor=False, queued=False, completed=False, since=35, fruitless=0)
+        self.assertIsNone(decision_reason(previous, previous, **options))
+        state["sun"] = 100
+        self.assertEqual(decision_reason(decision_context(state), previous, **options), "card_available")
+
+    def test_new_threat_can_use_a_free_card_during_backoff(self):
+        from agent import decision_context, decision_reason
+
+        state = board()
+        seed(state, "puff_shroom", cost=0)
+        previous = decision_context(state)
+        options = dict(conveyor=False, queued=False, completed=False, since=8, fruitless=3)
+        self.assertIsNone(decision_reason(previous, previous, **options))
+        state["zombies"] = [{"type": "conehead", "row": 0, "x": 190, "hp": 270, "armor_hp": 200}]
+        self.assertEqual(decision_reason(decision_context(state), previous, **options), "threat_changed")
+
+    def test_new_copy_of_a_conveyor_card_is_a_change(self):
+        from agent import decision_context, decision_reason
+
+        state = board()
+        seed(state, "wall_nut", cost=0)
+        previous = decision_context(state)
+        seed(state, "wall_nut", cost=0)
+        self.assertEqual(decision_reason(decision_context(state), previous, conveyor=True, queued=False,
+                                         completed=False, since=8, fruitless=3), "card_available")
+
+
+
+class RejectedPlanTests(unittest.TestCase):
+    def test_fully_rejected_plan_is_retried_soon_but_not_in_a_loop(self):
+        from agent import decision_context, decision_reason
+        state = board()
+        seed(state, "peashooter", cost=100)
+        ctx = decision_context(state)
+        base = dict(conveyor=False, queued=False, completed=False)
+        self.assertIsNone(decision_reason(ctx, ctx, since=8, fruitless=0, **base))
+        self.assertEqual(decision_reason(ctx, ctx, since=8, fruitless=0, rejected=True, **base), "plan_rejected")
+        self.assertIsNone(decision_reason(ctx, ctx, since=6, fruitless=0, rejected=True, **base))
+        self.assertIsNone(decision_reason(ctx, ctx, since=8, fruitless=3, rejected=True, **base))
+
+
+class PoolRuleTests(unittest.TestCase):
+    def test_water_messages_and_mines(self):
+        import agent
+        s = board(terrain="pool")
+        seed(s, "peashooter")
+        seed(s, "potato_mine")
+        status, reason, _ = agent.validate({"type": "plant", "seed": "peashooter", "row": 2, "col": 3}, s)
+        self.assertEqual(status, "reject")
+        self.assertIn("plant lily_pad at (2,3) first, then peashooter at (2,3)", reason)
+        plant(s, "lily_pad", 2, 3)
+        status, reason, _ = agent.validate({"type": "plant", "seed": "potato_mine", "row": 2, "col": 3}, s)
+        self.assertEqual(status, "reject")
+        self.assertIn("needs solid ground", reason)
+        self.assertEqual(agent.validate({"type": "plant", "seed": "peashooter", "row": 2, "col": 3}, s)[0], "ok")
 
 
 if __name__ == "__main__":

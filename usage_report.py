@@ -19,7 +19,8 @@ import json
 import os
 from collections import defaultdict
 
-CALL_KINDS = {"decision": "decisions", "seed_pick": "pick + plan", "level_plan": "plan",
+CALL_KINDS = {"decision": "decisions", "unused_decision": "unused decisions",
+              "seed_pick": "pick + plan", "level_plan": "plan",
               "journal": "reflection"}
 FIELDS = ("calls", "input", "cache_write", "cache_read", "output", "thinking")
 

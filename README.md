@@ -18,6 +18,8 @@ Menus and transitions use a deterministic bot and consume zero Claude decisions.
 
 The local JSONL log records each board snapshot sent to Claude, its plan, which actions went through, and the level result. It also captures response times and token usage when available. The recording overlay shows Claude’s latest explanation and planned moves.
 
+The agent skips periodic Claude calls when the wave, threats, plants, and affordable cards are unchanged. It sends a compact board and starts a fresh Claude Code conversation after three decisions by default. The player's level plan and journal carry forward across those resets. [Player usage report](usage_report.py)
+
 ## Implementation and verification
 
 Daytime front-lawn play has been verified on the Steam GOTY build **1.2.0.1096**. The broader Adventure mechanics and transitions are implemented from public game references and covered by offline regression tests using synthetic memory and mocked input. Full-campaign play, the added memory fields, and the new screen navigation still need live verification on the target build.

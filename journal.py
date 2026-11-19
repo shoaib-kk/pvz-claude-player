@@ -33,7 +33,7 @@ only applies to this kind of level.
 Lessons must be concrete and in your own words (plant placement, timing, economy,
 specific zombies), about things you control: which plants you bring, and what you plant or
 shovel where and when. Lawn mowers fire by themselves; plants can't be moved.
-At most %d general and %d situation lessons, one or two sentences each, most important first.
+At most %d general and %d situation lessons, one short sentence per lesson, most important first.
 Also write a one-sentence summary of why you won or lost this level.
 Answer with JSON only.""" % (MAX_LESSONS, MAX_SITUATION)
 
