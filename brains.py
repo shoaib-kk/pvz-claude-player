@@ -15,6 +15,7 @@ import json
 import os
 
 import offsets as O
+import plant_info
 
 # ---------------------------------------------------------------------------
 # Turning game state into text a model can read
@@ -33,22 +34,17 @@ SHOOTERS = {"peashooter", "snow_pea", "repeater", "gatling_pea", "threepeater", 
 
 def _row_summary(state, zombies):
     """One line per row: attackers, front blocker, closest zombie. Helps the player spot weak lanes."""
-    out = ["", "Lane check (attackers = shooting plants in the row):"]
+    out = ["", "Row summary (attackers = plants in the row that shoot or lob):"]
     mowers = state.get("mowers", [])
     types = state.get("cells")
     for r, row in enumerate(state["grid"]):
         if types and all(t == O.CELL_DIRT for t in types[r]):
             continue
         shooters = sum(1 for p in row if p in SHOOTERS)
-        cols = [z_col for z_col in (x_to_col(z["x"]) for z in zombies if z.get("row") == r)]
-        near = f"closest zombie at col {min(cols)}" if cols else "no zombies"
-        flag = ""
-        if cols and shooters == 0:
-            flag = "  <-- UNDEFENDED"
-        elif cols and min(cols) <= 3:
-            flag = "  <-- DANGER"
-        mower = "mower ready" if r < len(mowers) and mowers[r] else "NO mower"
-        out.append(f"  row {r}: {shooters} attackers, {mower}, {near}{flag}")
+        cols = [x_to_col(z["x"]) for z in zombies if z.get("row") == r]
+        near = f"{len(cols)} zombies, closest at col {min(cols)}" if cols else "no zombies"
+        mower = "mower ready" if r < len(mowers) and mowers[r] else "no mower"
+        out.append(f"  row {r}: {shooters} attackers, {mower}, {near}")
     return out
 
 
@@ -63,18 +59,19 @@ def describe(state, recent, queue=None):
         "night": "There is no falling sun. Mushrooms are awake. Graves need Grave Busters.",
         "pool": "Rows 2 and 3 are water. Lily Pads support dry-land plants there; aquatic plants need open water.",
         "fog": "Rows 2 and 3 are water. Use Lily Pads for dry-land plants. Mushrooms are awake and there is no falling sun.",
-        "roof": "Place a Flower Pot before another plant. Use lobbers across the slope.",
-        "boss": "Use Flower Pots and lobbers. Save Ice-shrooms for fireballs and Jalapenos for iceballs. Attack the lowered head.",
+        "roof": "Plants need a Flower Pot first. The roof slopes, so straight shots hit the slope; lobbed shots don't.",
+        "boss": "Roof: plants need Flower Pots. Dr. Zomboss rolls fireballs and iceballs down rows "
+                "(an Ice-shroom puts out a fireball, a Jalapeno melts an iceball) and lowers his head to attack.",
     }
     lines.append(f"Terrain: {terrain}. " + rules.get(terrain, ""))
     if state.get("conveyor"):
-        lines.append("Conveyor cards are free and single-use. Use cards to leave room for new arrivals. "
-                     "Only the cards listed below exist; don't plan seeds that aren't on the belt.")
+        lines.append("Conveyor cards are free and single-use; a full belt stops receiving new cards. "
+                     "Only the cards listed below exist.")
     if special == "bowling":
-        lines.append("Wall-nut Bowling: launch only from columns 0, 1, or 2, on the house side of the red line. "
-                     "Wall-nuts roll right, damage zombies, and bounce between rows. They leave their launch "
-                     "cells immediately, so repeatedly launch from the same cell. Explode-o-nuts explode "
-                     "on contact. The rolling nuts are your damage source. Use every available card on a threatened lane.")
+        lines.append("Wall-nut Bowling: nuts can only be launched from columns 0, 1, or 2 (house side of the red line). "
+                     "A launched Wall-nut rolls right, damages zombies it hits and bounces into a neighbouring row; "
+                     "it leaves its launch cell immediately, so the cell can be reused. Explode-o-nuts explode "
+                     "on contact. There are no other plants.")
     elif special == "vases":
         lines.append("Vasebreaker: use break_vase to smash a vase, starting near the right edge. "
                      "Use its temporary seed packets before they expire. Open one at a time.")
@@ -84,6 +81,12 @@ def describe(state, recent, queue=None):
         status = "READY" if s["ready"] else "moving into view" if state.get("conveyor") else "recharging"
         afford = "" if s["cost"] is None or s["cost"] <= state["sun"] else " (can't afford)"
         lines.append(f"  {s['slot']}: {s['name']}, {s['cost']} sun, {status}{afford}")
+    known = plant_info.describe_plants([s["name"] for s in state["seeds"]], state.get("level"))
+    if known:
+        lines.append("")
+        lines.append("What you know about these plants"
+                     + (" (from your Almanac):" if plant_info.stage(state.get("level")) == "almanac" else ":"))
+        lines.extend(known)
     lines.append("")
     lines.append("Lawn (row 0 = top, col 0 = next to the house, zombies walk from col 8 toward col 0).")
     lines.append("Each cell: plant name, '.' = empty grass, '#' = bare dirt (can't plant there).")
@@ -151,7 +154,7 @@ Actions:
 - break_vase: click a vase at the specified row and column in Vasebreaker.
 
 How your plan is carried out:
-- The game keeps running while you think (about 5 seconds), so zombies will have moved a little
+- The game keeps running while you think (a few seconds), so zombies will have moved a little
   by the time your plan starts. Plan slightly ahead.
 - Actions run strictly in your order. Each one happens as soon as you have enough sun and the seed
   has recharged, so you can queue things you can't afford yet ("save up" = put it next in the plan).
@@ -160,22 +163,18 @@ How your plan is carried out:
   (a zombie shows up in a new place, you lose a plant, a lawn mower is used).
 - An empty plan means: do nothing until something changes.
 
-Rules of thumb:
-- Sun is collected for you automatically. Sunflowers make more sun over time.
-- A zombie that reaches the house in a row with no lawn mower loses the game. A mower clears its row once.
-- Put Peashooters between the house and the zombies so they can hit. Prioritize threatened lanes
-  with no mower before spending more sun on economy.
-- Standard layout per row, house side first: Sunflowers in cols 0-1, attackers in cols 2-4,
-  a Wall-nut in col 5 or 6 IN FRONT of the attackers. Never plant attackers ahead of the Wall-nut.
-- Every row that has zombies needs an attacker. Targets: 1 attacker in every row by wave 4,
-  2 per row by wave 8, 3+ per row before flag waves (every 10th wave brings a big horde).
-- Aim for 6-8 Sunflowers early, then stop buying them and spend everything on defense.
-  Don't sit on more than ~150 sun: queue the next attacker or Wall-nut.
-- Fix UNDEFENDED and DANGER lanes (see the lane check) first. Use Cherry Bomb or Potato Mine
-  for emergencies; a mine needs time to arm, so put it a few columns ahead of the zombie.
+Game rules:
+- Sun is collected for you automatically. Plants cost sun; seeds recharge after use.
+- Zombies walk along their row toward the house (col 0) and eat plants in their way.
+- Each row has one lawn mower. It fires by itself when a zombie reaches the house end of the row,
+  clears that row, and is gone. A zombie that reaches the house in a row with no mower loses the game.
+- Plants can't be moved; the shovel removes one (no sun back).
+- Zombies come in waves; flag waves are larger. Survive the last wave to win.
 - Upgrade plants go on top of their base plant: gatling_pea on repeater, twin_sunflower on sunflower,
   winter_melon on melon_pult, spikerock on spikeweed, cob_cannon on the left of two side-by-side kernel_pults.
 - Each action is checked before it runs; invalid ones are rejected and you will see why next turn.
+- What you know about each plant is listed with the board. How to use them is up to you;
+  your journal (if any) holds lessons you wrote after earlier levels.
 
 Answer with JSON only. Keep "reasoning" to one or two short sentences explaining your plan - it may be shown to viewers."""
 
@@ -204,13 +203,14 @@ DECISION_SCHEMA = {
 
 
 PICK_SYSTEM = """You are about to play a level of Plants vs. Zombies and must choose your plants.
-Pick for the terrain described in the request. Bring a Lily Pad for pool/fog and a Flower Pot and
-lobbers for a roof. In night/fog, use mushrooms and an appropriate sun producer. During day,
-mushrooms need Coffee Bean. Falling sun is collected for you automatically.
-Upgrade plants (gatling_pea, gold_magnet, cob_cannon...)
-can only be planted on top of their base plant, so they need that base plant in the loadout too.
-Pick exactly the number of plants asked for, using
-only names from the list. Answer with JSON only; keep "reasoning" to one or two short sentences
+Facts: in pool/fog levels, rows 2 and 3 are water (only Lily Pads and water plants go there directly).
+On the roof every plant needs a Flower Pot. At night and in fog there is no falling sun. Mushrooms
+sleep during the day unless woken by a Coffee Bean. Falling sun is collected for you automatically.
+Upgrade plants (gatling_pea, gold_magnet, cob_cannon...) can only be planted on top of their base
+plant, so they need that base plant in the loadout too.
+Pick exactly the number of plants asked for, using only names from the list.
+Your journal (if any) holds lessons you wrote after earlier levels.
+Answer with JSON only; keep "reasoning" to one or two short sentences
 explaining your loadout - it may be shown to viewers."""
 
 PICK_SCHEMA = {
@@ -224,20 +224,34 @@ PICK_SCHEMA = {
 }
 
 
-def pick_prompt(options, slots, zombies, forced=None, terrain="day"):
+def pick_prompt(options, slots, zombies, forced=None, terrain="day", level=None):
     lines = [f"Terrain: {terrain}. Choose exactly {slots} plants (list {slots} names)."]
     if forced:
         lines += [f"Crazy Dave has already locked these into your loadout (you will have them too): "
                   + ", ".join(forced)]
     lines += ["", "Available plants (name: sun cost):"]
     lines += [f"  {o['name']}: {o['cost']}" for o in options]
+    known = plant_info.describe_plants([o["name"] for o in options] + list(forced or []), level)
+    if known:
+        lines += ["", "What you know about them"
+                  + (" (from your Almanac):" if plant_info.stage(level) == "almanac" else ":")]
+        lines += known
     if zombies:
         lines += ["", "Zombies previewed for this level: "
                   + ", ".join(f"{n} x{k}" for n, k in zombies.items())]
     return "\n".join(lines)
 
 
-class ClaudeBrain:
+class Notes:
+    """Per-run knowledge the agent hands the player: its journal text and the current level."""
+    notes = ""
+    level = None
+
+    def system(self, base):
+        return base + (self.notes or "")
+
+
+class ClaudeBrain(Notes):
     name = "claude"
 
     def __init__(self, model="claude-opus-5-5", effort="medium"):
@@ -270,12 +284,13 @@ class ClaudeBrain:
 
     def decide(self, state, recent, queue=None):
         board = describe(state, recent, queue)
-        decision = self.ask(SYSTEM_PROMPT, board, DECISION_SCHEMA)
+        decision = self.ask(self.system(SYSTEM_PROMPT), board, DECISION_SCHEMA)
         decision["_prompt"] = board
         return decision
 
     def pick_seeds(self, options, slots, zombies, forced=None, terrain="day"):
-        return self.ask(PICK_SYSTEM, pick_prompt(options, slots, zombies, forced, terrain), PICK_SCHEMA)
+        return self.ask(self.system(PICK_SYSTEM), pick_prompt(options, slots, zombies, forced, terrain, self.level),
+                        PICK_SCHEMA)
 
 
 # ---------------------------------------------------------------------------
@@ -296,47 +311,134 @@ def find_claude_exe():
     raise FileNotFoundError("claude.exe not found. Install it: npm install -g @anthropic-ai/claude-code")
 
 
-class ClaudeCodeBrain:
-    """Sends each board to `claude -p` (headless Claude Code) and reads back JSON.
+PERSISTENT_NOTE = ("\n\nYou will receive a new board after every plan in this conversation. "
+                   "Only the latest board is current; earlier boards are out of date.")
+
+
+class ClaudeCodeBrain(Notes):
+    """Sends each board to headless Claude Code and reads back JSON.
     Uses the account you logged in with (`claude auth login`), so it counts
-    toward your subscription's usage limits instead of costing API money."""
+    toward your subscription's usage limits instead of costing API money.
+
+    Gameplay decisions go to one long-running `claude -p --input-format stream-json`
+    process, so the CLI start-up (~3-6 s) is paid once per level instead of per decision.
+    The conversation is reset at each level start and every `max_turns` decisions so
+    the context stays small. Seed picks (once per level) use a one-shot call."""
     name = "subscription"
 
-    def __init__(self, model=None, effort="medium", timeout=180):
+    def __init__(self, model=None, effort="medium", timeout=180, persistent=True, max_turns=15):
         self.exe = find_claude_exe()
         self.model = model
         self.effort = effort
         self.timeout = timeout
+        self.persistent = persistent
+        self.max_turns = max_turns
         self.last_usage = None
+        self._proc = None
+        self._lines = None
+        self._turns = 0
+        import threading
+        self._lock = threading.Lock()
+        import atexit
+        atexit.register(self.close)
 
-    def decide(self, state, recent, queue=None):
-        board = describe(state, recent, queue)
-        decision = self.ask(SYSTEM_PROMPT, board, DECISION_SCHEMA)
-        decision["_prompt"] = board
-        return decision
-
-    def pick_seeds(self, options, slots, zombies, forced=None, terrain="day"):
-        return self.ask(PICK_SYSTEM, pick_prompt(options, slots, zombies, forced, terrain), PICK_SCHEMA)
-
-    def ask(self, system, user, schema):
-        import subprocess
+    def _base_cmd(self, system, schema):
         cmd = [self.exe, "-p",
-               "--output-format", "json",
                "--json-schema", json.dumps(schema),
                "--system-prompt", system,
                "--tools", "",                 # no file/shell tools: it only answers
                "--setting-sources", "",       # ignore any CLAUDE.md / project settings
+               "--strict-mcp-config",         # don't load MCP servers / claude.ai connectors (~3-6 s)
+               "--disable-slash-commands",    # don't load skills
+               "--settings", '{"alwaysThinkingEnabled": false}',
                "--no-session-persistence",
                "--effort", self.effort]
         if self.model:
             cmd += ["--model", self.model]
-        proc = subprocess.run(cmd, input=user, capture_output=True, text=True,
-                              encoding="utf-8", timeout=self.timeout,
-                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        try:
-            data = json.loads(proc.stdout)
-        except json.JSONDecodeError:
-            raise RuntimeError(f"claude exited {proc.returncode}: {proc.stderr.strip()[:300] or proc.stdout[:300]}")
+        return cmd
+
+    # ---- persistent decision process ------------------------------------------------
+    def _start(self):
+        import subprocess, threading, queue
+        cmd = self._base_cmd(self.system(SYSTEM_PROMPT) + PERSISTENT_NOTE, DECISION_SCHEMA)
+        cmd += ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
+        self._proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                      stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
+                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        self._lines = queue.Queue()
+        proc, lines = self._proc, self._lines
+
+        def pump():
+            for line in proc.stdout:
+                lines.put(line)
+            lines.put(None)
+        threading.Thread(target=pump, daemon=True).start()
+        self._turns = 0
+
+    def close(self):
+        proc, self._proc = self._proc, None
+        if proc and proc.poll() is None:
+            try:
+                proc.stdin.close()
+                proc.wait(timeout=3)
+            except Exception:
+                proc.kill()
+
+    def reset(self):
+        """Start a fresh conversation (called at each level start). The new process
+        boots in the background, so the next decision doesn't pay the start-up."""
+        if not self.persistent:
+            return
+        with self._lock:
+            self.close()
+            self._start()
+
+    def _ask_persistent(self, user):
+        import queue
+        with self._lock:
+            if self._proc is None or self._proc.poll() is not None or self._turns >= self.max_turns:
+                self.close()
+                self._start()
+            self._turns += 1
+            msg = {"type": "user", "message": {"role": "user", "content": user}}
+            try:
+                self._proc.stdin.write(json.dumps(msg) + "\n")
+                self._proc.stdin.flush()
+            except OSError as e:
+                self.close()
+                raise RuntimeError(f"claude process died: {e}")
+            while True:
+                try:
+                    line = self._lines.get(timeout=self.timeout)
+                except queue.Empty:
+                    self.close()
+                    raise RuntimeError("claude did not answer in time")
+                if line is None:
+                    self.close()
+                    raise RuntimeError("claude process exited")
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if data.get("type") == "result":
+                    break
+        return self._parse(data)
+
+    # ---- public API ---------------------------------------------------------------
+    def decide(self, state, recent, queue=None):
+        board = describe(state, recent, queue)
+        if self.persistent:
+            decision = self._ask_persistent(board)
+        else:
+            decision = self.ask(self.system(SYSTEM_PROMPT), board, DECISION_SCHEMA)
+        decision["_prompt"] = board
+        return decision
+
+    def pick_seeds(self, options, slots, zombies, forced=None, terrain="day"):
+        return self.ask(self.system(PICK_SYSTEM), pick_prompt(options, slots, zombies, forced, terrain, self.level),
+                        PICK_SCHEMA)
+
+    def _parse(self, data):
         if data.get("is_error"):
             raise RuntimeError(str(data.get("result"))[:300])
         self.last_usage = data.get("usage")
@@ -344,6 +446,19 @@ class ClaudeCodeBrain:
         if answer is None:
             answer = json.loads(data.get("result") or "{}")
         return answer
+
+    def ask(self, system, user, schema):
+        """One-shot call (new process)."""
+        import subprocess
+        cmd = self._base_cmd(system, schema) + ["--output-format", "json"]
+        proc = subprocess.run(cmd, input=user, capture_output=True, text=True,
+                              encoding="utf-8", timeout=self.timeout,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            raise RuntimeError(f"claude exited {proc.returncode}: {proc.stderr.strip()[:300] or proc.stdout[:300]}")
+        return self._parse(data)
 
 
 # ---------------------------------------------------------------------------
@@ -357,7 +472,7 @@ INSTANT = ["cherry_bomb", "jalapeno", "squash", "potato_mine"]
 WALLS = ["tall_nut", "wall_nut"]
 
 
-class SimpleBrain:
+class SimpleBrain(Notes):
     name = "simple"
 
     def pick_seeds(self, options, slots, zombies, forced=None, terrain="day"):
@@ -442,7 +557,8 @@ def make_brain(name):
         return ClaudeBrain(model=model, effort=effort)
     if name == "subscription":
         return ClaudeCodeBrain(model=os.environ.get("PVZ_MODEL") or None,
-                               effort=os.environ.get("PVZ_EFFORT", "medium"))
+                               effort=os.environ.get("PVZ_EFFORT", "medium"),
+                               persistent=os.environ.get("PVZ_PERSISTENT", "1") != "0")
     if name == "simple":
         return SimpleBrain()
     raise ValueError(f"unknown brain {name!r} (use 'subscription', 'claude' or 'simple')")

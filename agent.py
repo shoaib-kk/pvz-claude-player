@@ -34,12 +34,13 @@ import pyautogui
 import win32gui
 
 import offsets as O
-from brains import make_brain, x_to_col
+from brains import describe, make_brain, x_to_col
+from journal import Journal, LevelRecorder
 from controller import Controller
 
 ROOT = Path(__file__).parent
 TICK = 0.15                # main loop period (sun pickup, plan execution)
-MIN_GAP = 2.0              # never start a new AI request sooner than this after the last one
+MIN_GAP = 4.0              # never start a new AI request sooner than this after the last one
 MAX_GAP = 30.0             # re-plan at least this often while something is affordable
 MAX_ACTIONS = 5            # length of the AI's build queue
 UPGRADES = {"gatling_pea": "repeater", "twin_sunflower": "sunflower", "gloom_shroom": "fume_shroom",
@@ -174,7 +175,7 @@ def important_change(old, new):
 
 class Agent:
     def __init__(self, brain, max_decisions=None, auto_sun=True, restart=False, levels=1, retries=0,
-                 until_level=50):
+                 until_level=50, journal=True):
         self.ctl = Controller(move_duration=0.08)
         if not self.ctl.reader:
             sys.exit("Can't read game memory. Is Plants vs. Zombies running? (run as admin if needed)")
@@ -186,6 +187,9 @@ class Agent:
         self.levels = levels
         self.retries = retries
         self.until_level = until_level
+        self.journal = Journal() if journal else None
+        self.recorder = None
+        self.loadout = []
         self.reset_plan()
         self.board_at_start = None
         self.decisions = 0
@@ -363,9 +367,16 @@ class Agent:
         import seed_select
         self.show("Choosing plants...")
         t0 = time.time()
-        names, why = seed_select.choose(self.ctl, self.brain, log=print)
+        try:
+            self.brain.level = self.reader.level_info(self.reader.board())["level"]
+        except Exception:  # noqa: BLE001 - only used to stage plant knowledge
+            pass
+        names, why, warned = seed_select.choose(self.ctl, self.brain, log=print)
+        self.loadout = list(names)
+        self.loadout_warning = warned
         self.show(f"Loadout: {', '.join(names)}. {why}")
-        self.log(kind="seed_pick", seeds=names, reasoning=why, think_seconds=round(time.time() - t0, 1))
+        self.log(kind="seed_pick", seeds=names, reasoning=why, warned=warned,
+                 think_seconds=round(time.time() - t0, 1))
 
     # --- during the level ----------------------------------------------------
     def collect(self):
@@ -480,6 +491,26 @@ class Agent:
                 return True
         return False
 
+    def reflect(self, label, outcome):
+        """Let the player rewrite its journal after a finished level."""
+        journal, recorder = getattr(self, "journal", None), getattr(self, "recorder", None)
+        if not journal or not recorder:
+            return
+        board_text = describe(recorder.last, []) if recorder.last else None
+        report = recorder.report(board_text)
+        t0 = time.time()
+        try:
+            summary = journal.reflect(self.brain, label, outcome, report)
+        except Exception as e:  # noqa: BLE001 - the journal must never stop a run
+            self.log(kind="journal_error", level=label, error=str(e))
+            return
+        if summary is None:
+            return
+        lessons = "".join("\n    - " + x for x in journal.lessons)
+        self.show(f"Journal after {label} ({outcome}): {summary}{lessons}")
+        self.log(kind="journal", level=label, outcome=outcome, summary=summary, lessons=journal.lessons,
+                 report=report, think_seconds=round(time.time() - t0, 1))
+
     def capture_result(self, level, outcome):
         stamp = datetime.now().strftime("%H-%M-%S-%f")
         path = self.log_path.with_name(f"{self.log_path.stem}_level_{level}_{outcome}_{stamp}.png")
@@ -529,6 +560,7 @@ class Agent:
         self.board_at_start = self.reader.board()
         level = self.reader.level_info(self.board_at_start)["level"]
         pool = ThreadPoolExecutor(max_workers=1)
+        last_observe = 0.0
         try:
             while True:
                 # Only ever play the level we started: stop if the game moved on
@@ -576,6 +608,10 @@ class Agent:
                     time.sleep(TICK)
                     continue
                 unreadable_since = None
+                recorder = getattr(self, "recorder", None)
+                if recorder and time.monotonic() - last_observe >= 1:
+                    recorder.observe(state)
+                    last_observe = time.monotonic()
 
                 if self.reader.dave_talking():
                     pyautogui.press("enter")        # Vasebreaker and whack tutorial dialogue
@@ -616,8 +652,11 @@ class Agent:
                     new_card = (state.get("conveyor") or state.get("special") == "vases") and bool(
                         available - last_available
                     )
+                    # A board change only matters once something can be planted; until
+                    # then the player could only answer "wait". The change isn't lost:
+                    # last_threats isn't updated, so it still counts when sun arrives.
                     due = since >= MIN_GAP and (first or plan_done or (new_card and not self.queue)
-                                                or important_change(last_threats, now_threats)
+                                                or (important_change(last_threats, now_threats) and can_buy)
                                                 or (since >= MAX_GAP and can_buy))
                     # Normal decks can plan ahead for recharge and sun. Empty
                     # conveyors and vases give the player nothing to use.
@@ -645,6 +684,9 @@ class Agent:
         retry = False
         retries_left = self.retries
         while wins < self.levels:
+            journal = getattr(self, "journal", None)
+            if journal and hasattr(self, "brain"):
+                self.brain.notes = journal.prompt_block()
             if not self.get_to_playing(previous_level=last_win, retry=retry or self.retries > 0):
                 self.show(f"Navigation stopped on the {self.reader.scene()} screen.")
                 return "transition_stalled", wins
@@ -657,10 +699,22 @@ class Agent:
                 self.show(f"Expected the next Adventure board but reached level {level}.")
                 return "unexpected_level", wins
             self.reset_plan()
-            label = f"{(level - 1) // 10 + 1}-{(level - 1) % 10 + 1}" if level else "current level"
+            reset_brain = getattr(getattr(self, "brain", None), "reset", None)
+            if reset_brain:
+                reset_brain()  # fresh conversation per level
+            label =f"{(level - 1) // 10 + 1}-{(level - 1) % 10 + 1}" if level else "current level"
             self.show(f"Level {label} started ({info['special'] or info['terrain']}).")
             self.log(kind="level_start", **info)
+            if hasattr(self, "brain"):
+                self.brain.level = level
+            self.recorder = LevelRecorder(label, getattr(self, "loadout", []))
+            if getattr(self, "loadout_warning", False):
+                self.recorder.events.append("before the level: the game warned that your loadout "
+                                            "had no sun-producing plant; you started anyway")
+                self.loadout_warning = False
             result = self.play()
+            if result in ("won", "lost"):
+                self.reflect(label, result)
             if result in ("won", "lost"):
                 self.capture_result(level, result)
             if result == "won":
@@ -726,6 +780,8 @@ def main():
                         help="advance through Adventure and stop after absolute level N (1-50)")
     ap.add_argument("--retries", type=int, default=0, metavar="N",
                     help="retry a lost level up to N times")
+    ap.add_argument("--no-journal", action="store_true",
+                    help="don't read or write the player's lessons journal (journal/lessons.json)")
     args = ap.parse_args()
     if not 1 <= args.levels <= 50 or args.retries < 0 or (
         args.until_level is not None and not 1 <= args.until_level <= 50
@@ -737,7 +793,7 @@ def main():
         sys.exit(f"Couldn't start the {args.brain} brain: {e}")
     Agent(brain, max_decisions=args.max_decisions, auto_sun=not args.no_auto_sun,
           restart=args.restart, levels=50 if args.until_level else args.levels, retries=args.retries,
-          until_level=args.until_level or 50).run()
+          until_level=args.until_level or 50, journal=not args.no_journal).run()
 
 
 if __name__ == "__main__":

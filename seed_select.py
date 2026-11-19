@@ -153,4 +153,25 @@ def choose(ctl, brain, log=print):
         log(f"    (only {filled - locked} of {len(names)} picks landed in the bank)")
     time.sleep(0.6)
     ctl.click(*LETS_ROCK)
-    return forced + names, pick.get("reasoning", "")
+    warned = confirm_warning(ctl, log)
+    return forced + names, pick.get("reasoning", ""), warned
+
+
+# The stone "Warning" dialog (e.g. "You haven't chosen any sun producing plants") that the
+# game shows after Let's Rock. The player's loadout stands: we answer Yes and tell the
+# player afterwards, through the journal timeline.
+WARNING_POINTS = ((215, 420), (230, 380), (400, 190))
+WARNING_YES = (305, 393)
+
+
+def warning_dialog(img):
+    return all(70 < r < 125 and b - r >= 25 for (r, g, b) in (img.getpixel(p) for p in WARNING_POINTS))
+
+
+def confirm_warning(ctl, log=print, wait=1.5):
+    time.sleep(wait)
+    if not warning_dialog(screenshot(ctl)):
+        return False
+    log("    (the game warned about the loadout; keeping the player's choice)")
+    ctl.click(*WARNING_YES)
+    return True

@@ -20,6 +20,11 @@ Live tests use Claude Haiku at low effort on Steam GOTY 1.2.0.1096. Raw logs and
 | 1-8 | Won | |
 | 1-9 | Won | |
 | 1-10 (conveyor) | Won | Puff-shroom reward verified on screen. Five plans asked for a Peashooter that was not on the belt; the validator rejected them. Added an explicit "only listed cards exist" line for conveyor levels. |
+| 2-1 (night), persistent brain | Won | First live run of the long-running Claude process. Decisions took 1.7 s (median), 5.2 s for the first and 7.0 s at most, against about 10 s before. 55 decisions, 31 of 32 actions OK, zero failed clicks. Claude picked Puff-shroom for night by itself. Sun-shroom reward verified on screen. Night mechanics now verified live. |
+| 2-2 (night), blank journal, no coaching | Won | First level without hand-written strategy. 93 decisions, 20 of them empty, because a free Puff-shroom is almost always affordable at night and keeps triggering requests. Claude's own summary: it won only because the mowers and Cherry Bombs covered for a weak mushroom line. |
+| 2-3, attempt 1 | Lost at wave 10/10 | No sun producer in the loadout. The journal wrote 11 lessons (bring real damage, Puff-shrooms are short range, and others). |
+| 2-3, retry | Stalled on the plant chooser | New screen: the game's "You haven't chosen any sun producing plants" warning. The bot now detects it, answers Yes so the player's choice stands, and adds the warning to the journal timeline. Added a test. |
+| 2-3, attempts 2 and 3 | Lost at wave 10/10 both times | The loadout changed as the journal grew: Sun-shroom, then Sunflower plus Sun-shroom, and Fume-shroom. Each loss ended with 0 sun and no way to rebuild walls. Haiku at low effort is learning, but not yet enough to win. Stopped here. |
 
 Run of 1-7 to 1-10: 163 decisions, 214 actions, zero failed clicks, no retries needed. 31 offline regression tests pass.
 
