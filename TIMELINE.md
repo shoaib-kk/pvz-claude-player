@@ -1,7 +1,7 @@
 # Development timeline
 
-What changed, when, and why, for use in the video. All times are local, on 19 November 2026.
-The player was Claude Haiku at low effort throughout. The exact numbers come from the run logs.
+What changed, when, and why, for use in the video. Times are local to Sydney.
+Haiku played the early runs. Sonnet took over at 2-3. The numbers come from the run logs.
 
 ## Before this session
 - **Commit `ef40b1b`**: published the Claude PvZ player and its setup guide.
@@ -41,6 +41,9 @@ The player was Claude Haiku at low effort throughout. The exact numbers come fro
 | 16:30–17:05 | 2-7 to 2-10 | **Sonnet won all four on its first try**, finishing World 2 (night). Its own plan held up: Sun-shrooms at the back, 2-3 Fume-shrooms per row, Puff-shroom blockers, and Wall-nuts in front. 2-10's conveyor handed it Doom, Ice and Hypno-shrooms, which it saved for clumps and Footballs. | Found that the game's end-of-level mower cash-in was recorded as "all mowers fired", so Claude believed its wins were narrow. Fixed. |
 | ~17:30 | — | Token check: 2-7 to 2-10 cost ~2.1M input tokens per level, mostly the long conversation being re-read on every decision. Also repaired Sonnet's journal: its 2-8 to 2-10 reflections were redone without the fake mower cash-in. 2-9 went from "won by the skin of our teeth" to "won with all 5 mowers intact". | Snapshot of both journals committed under `snapshots/`. A new Claude process every 3 decisions instead of 40, a compact board, plant facts sent once per level in the cached prompt, and free seeds no longer trigger requests: about 5–7k input tokens per decision instead of up to ~38k. |
 | 18:25–18:58 | 3-1, 3-2 (pool) | First pool levels. **3-1: lost twice**, mostly by ignoring the water rows, then **won** with all 6 mowers after its journal noted "Row 3 (water) was never built up". **3-2: lost twice** when water row 2's Lily Pads were eaten and never rebuilt. Token use fell to ~247k input per attempt, from ~2.1M. | Water planting explained as two actions (pad, then plant); Potato Mines and Spikeweeds rejected on pads. A plan whose moves are all rejected gets a quick retry. |
+| 19:01–19:45 | 3-2 to 3-5 | Retried as is (low effort, up to 3 attempts). **3-2 won** on the next try, using its "rebuild the pads" lesson. **3-3: two losses, then a win** with all 6 mowers. **3-4 and 3-5 won first try.** It reached 3-5 without needing medium effort. | Crazy Dave's shop is now detected from the screen and skipped with Next Level. |
+
+On 20 November, Sonnet cleared 3-6 and 3-7 on its first attempt and won 3-8 and 3-9 on retry. It then won 3-10 on its first attempt in 79 gameplay decisions with all six mowers intact.
 
 **Headline numbers:** 1-7 to 1-10 were won back to back in one run. That run took 163 Claude decisions and 214 actions, with **0 failed clicks** and no retries.
 

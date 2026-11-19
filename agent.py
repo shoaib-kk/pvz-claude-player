@@ -405,7 +405,11 @@ class Agent:
                 elif award_clicked and previous_level in (24, 34, 41) and elapsed > 2:
                     pyautogui.press("enter")        # Dave's store intro advances on Enter
                     if not self.reader.dave_talking():
-                        self.ctl.click(400, 525)    # store Back, also within Next Level
+                        self.ctl.click(*seed_select.STORE_NEXT_LEVEL)
+                elif self._store_visible():
+                    pyautogui.press("enter")        # finish any shop dialogue, then leave
+                    self.ctl.click(*seed_select.STORE_NEXT_LEVEL)
+                    self.log(kind="store_next_level", after_level=previous_level)
                 else:
                     self.ctl.click(402, 520)
                 award_clicked = True
@@ -463,6 +467,13 @@ class Agent:
                     continue
             time.sleep(0.5)
         return False
+
+    def _store_visible(self):
+        import seed_select
+        try:
+            return seed_select.store_screen(seed_select.screenshot(self.ctl))
+        except Exception:  # noqa: BLE001 - no screenshot (tests, locked screen)
+            return False
 
     def choose_plants(self):
         import seed_select

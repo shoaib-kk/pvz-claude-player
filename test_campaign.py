@@ -330,7 +330,7 @@ class LoopTests(unittest.TestCase):
 
     @patch("agent.time.sleep")
     def test_almanac_shop_and_zen_transition_actions(self, _):
-        for previous, expected in ((14, (720, 580)), (24, (400, 525))):
+        for previous, expected in ((14, (720, 580)), (24, (430, 553))):
             op = operator()
             op.reader.scene.side_effect = ["award", "award", "playing"]
             op.reader.board.return_value = 0

@@ -157,6 +157,15 @@ def choose(ctl, brain, log=print):
     return forced + names, pick.get("reasoning", ""), warned
 
 
+# Crazy Dave's shop (first shown after 3-4): yellow "NEXT LEVEL" sign at the bottom centre.
+STORE_SIGN_POINTS = ((380, 530), (480, 530), (430, 580))
+STORE_NEXT_LEVEL = (430, 553)
+
+
+def store_screen(img):
+    return all(r > 220 and g > 180 and b < 130 for (r, g, b) in (img.getpixel(p) for p in STORE_SIGN_POINTS))
+
+
 # Crazy Dave's "Upgrade to N seed slots?" offer during an intro (paid in game coins).
 # A normal player accepts it; the bot does too.
 SLOT_OFFER_POINTS = ((330, 470), (700, 470), (515, 520))

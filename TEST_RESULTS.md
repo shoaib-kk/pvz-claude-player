@@ -1,6 +1,6 @@
 # Adventure test results
 
-Live tests use Claude Haiku at low effort on Steam GOTY 1.2.0.1096. Raw logs and screenshots stay local.
+Live tests use Claude Haiku and Sonnet on Steam GOTY 1.2.0.1096. Raw logs and screenshots stay local.
 
 ## 19 November 2026
 
@@ -38,8 +38,26 @@ Live tests use Claude Haiku at low effort on Steam GOTY 1.2.0.1096. Raw logs and
 | 3-1, attempt 3 | **Won**, all 6 mowers kept | 24 decisions. Claude's summary: every row, water rows included, got 2+ peashooters. |
 | 3-2, attempts 1-2 | **Lost twice; run stopped** | 102 decisions, 1 failed click. Water row 2 collapsed when its pads were eaten and weren't rebuilt; thin land rows 0-1 lost their mowers. |
 | Token use, world 3 runs | — | 196 player calls over 5 attempts: about 247k input tokens per attempt (including cache), down from ~2.1M per level in 2-7 to 2-10. |
+| 3-2, attempt 3 (Sonnet low, as is) | **Won** | 53 decisions. Its summary: every row had 3+ shooters with walls, and pads were rebuilt, which was the lesson from the two losses. |
+| 3-3 | Lost twice, **won** on attempt 3 | Losses: thin rows and unrebuilt water pads (Snorkels arrive). Won with all 6 mowers. Medium effort wasn't needed. |
+| 3-4 | **Won** first try | 77 decisions, a 30-wave level, 4 mowers left. |
+| After 3-4: Crazy Dave's shop | Stalled, fixed | The first visit to the shop. The Next Level click was slightly off the sign, and the shop was only handled straight after a level. The bot now detects the shop's sign from the screen and clicks Next Level. |
+| 3-5 (pool conveyor) | **Won** first try | 45 decisions; plan written from the first board in 7 s; zero failed clicks. Jalapeño reward verified on screen. |
 
 Run of 1-7 to 1-10: 163 decisions, 214 actions, zero failed clicks, no retries needed. 31 offline regression tests pass.
+
+## 20 November 2026
+
+Sonnet played at low effort throughout these runs.
+
+| Level | Result | Observation |
+| --- | --- | --- |
+| 3-6 and 3-7 | Both won on the first attempt | The reward screens confirmed Spikeweed and Torchwood. |
+| 3-8 | Lost once, then won | Dolphin Riders broke through the pool lanes on the first attempt. On retry, all six mowers survived and Tall-nut unlocked. |
+| 3-9 | Lost once, then won | The first attempt lost the top lanes and their Sunflowers at wave 19. The retry beat all 30 waves. |
+| 3-10 | Won on the first attempt | 79 gameplay decisions across 30 waves. All six mowers survived, and the Sea-shroom reward confirmed the win. |
+
+The runs from 3-6 through 3-10 recorded zero failed clicks or memory-read errors.
 
 ## Repository audit
 
