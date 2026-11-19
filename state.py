@@ -229,8 +229,7 @@ class GameReader:
         for i in range(min(used, 1024)):
             b = i * O.COIN_SIZE
             ctype = struct.unpack_from("<i", raw, b + O.CO_TYPE)[0]
-            if (not struct.unpack_from("<I", raw, b + O.COIN_SIZE - 4)[0] >> 16
-                    or raw[b + O.CO_DEAD] or raw[b + O.CO_COLLECTED] or not (0 < ctype < 40)):
+            if raw[b + O.CO_DEAD] or raw[b + O.CO_COLLECTED] or not (0 < ctype < 40):
                 continue
             x = struct.unpack_from("<f", raw, b + O.CO_X)[0]
             y = struct.unpack_from("<f", raw, b + O.CO_Y)[0]

@@ -10,7 +10,9 @@ Claude plays Plants vs. Zombies GOTY on Windows. It reads a text snapshot of the
 4. **Handle special levels.** Conveyor cards are free, single-use plants whose click positions move across the bank. Wall-nut Bowling limits launches to the first three columns. Vasebreaker exposes temporary seed packets and adds a vase-breaking action to Claude's plans. Scripted reflexes click zombies in Whack-a-Zombie and counter Zomboss fire and ice balls with the matching instant plant. Sun and coin collection are also scripted.
 5. **Advance through Adventure.** A level ends after the game changes to a confirmed result screen. Consecutive-level mode navigates the title screen, rewards, Crazy Dave dialogue, plant selection, and the intervening Almanac, shop, shovel tutorial, and Zen Garden tutorial. It clears the old plan between boards and checks the next Adventure level number. It can retry losses up to a specified count and finishes at 5-10.
 
-The default run ends after one level. Consecutive play is enabled with `--levels N` or `--campaign`, with `--retries N` controlling loss retries. The included `10 - AI plays consecutive levels.bat` chooses Haiku at low effort and allows two retries per level. Navigation has a timeout, and repeated player or board-reading errors stop the run.
+The default run ends after one level. Consecutive play is enabled with `--levels N`, `--campaign`, or an absolute endpoint such as `--until-level 10`. The `--retries N` option controls loss retries. The included `10 - AI plays consecutive levels.bat` chooses Haiku at low effort and allows two retries per level. Navigation has a timeout, and repeated player or board-reading errors stop the run.
+
+Menus and transitions use a deterministic bot and consume zero Claude decisions. It handles saved-game Continue dialogs and focus-loss pauses during intros. Claude is called for the loadout and board plans. Each confirmed result gets a local screenshot, allowing wins and failures to be reviewed after automatic transitions. [Live test results](TEST_RESULTS.md)
 
 ## What a run records
 

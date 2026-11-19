@@ -26,6 +26,32 @@ def x_to_col(x):
     return int((x + 50 - 40) // 80)
 
 
+SHOOTERS = {"peashooter", "snow_pea", "repeater", "gatling_pea", "threepeater", "split_pea",
+            "cactus", "starfruit", "puff_shroom", "scaredy_shroom", "fume_shroom", "gloom_shroom",
+            "cabbage_pult", "kernel_pult", "melon_pult", "winter_melon", "sea_shroom", "cattail"}
+
+
+def _row_summary(state, zombies):
+    """One line per row: attackers, front blocker, closest zombie. Helps the player spot weak lanes."""
+    out = ["", "Lane check (attackers = shooting plants in the row):"]
+    mowers = state.get("mowers", [])
+    types = state.get("cells")
+    for r, row in enumerate(state["grid"]):
+        if types and all(t == O.CELL_DIRT for t in types[r]):
+            continue
+        shooters = sum(1 for p in row if p in SHOOTERS)
+        cols = [z_col for z_col in (x_to_col(z["x"]) for z in zombies if z.get("row") == r)]
+        near = f"closest zombie at col {min(cols)}" if cols else "no zombies"
+        flag = ""
+        if cols and shooters == 0:
+            flag = "  <-- UNDEFENDED"
+        elif cols and min(cols) <= 3:
+            flag = "  <-- DANGER"
+        mower = "mower ready" if r < len(mowers) and mowers[r] else "NO mower"
+        out.append(f"  row {r}: {shooters} attackers, {mower}, {near}{flag}")
+    return out
+
+
 def describe(state, recent, queue=None):
     """Compact text description of the board for the model."""
     lines = []
@@ -42,9 +68,13 @@ def describe(state, recent, queue=None):
     }
     lines.append(f"Terrain: {terrain}. " + rules.get(terrain, ""))
     if state.get("conveyor"):
-        lines.append("Conveyor cards are free and single-use. Use cards to leave room for new arrivals.")
+        lines.append("Conveyor cards are free and single-use. Use cards to leave room for new arrivals. "
+                     "Only the cards listed below exist; don't plan seeds that aren't on the belt.")
     if special == "bowling":
-        lines.append("Wall-nut Bowling: roll nuts into threatened lanes from columns 0 through 2 only.")
+        lines.append("Wall-nut Bowling: launch only from columns 0, 1, or 2, on the house side of the red line. "
+                     "Wall-nuts roll right, damage zombies, and bounce between rows. They leave their launch "
+                     "cells immediately, so repeatedly launch from the same cell. Explode-o-nuts explode "
+                     "on contact. The rolling nuts are your damage source. Use every available card on a threatened lane.")
     elif special == "vases":
         lines.append("Vasebreaker: use break_vase to smash a vase, starting near the right edge. "
                      "Use its temporary seed packets before they expire. Open one at a time.")
@@ -95,6 +125,8 @@ def describe(state, recent, queue=None):
                          f"(x={z['x']}), hp {z['hp']}{armor}")
     else:
         lines.append("No zombies on the lawn yet.")
+    if not special:
+        lines.extend(_row_summary(state, zs))
     if queue:
         lines.append("")
         lines.append("Your unfinished plan (will be replaced by your answer):")
@@ -133,7 +165,14 @@ Rules of thumb:
 - A zombie that reaches the house in a row with no lawn mower loses the game. A mower clears its row once.
 - Put Peashooters between the house and the zombies so they can hit. Prioritize threatened lanes
   with no mower before spending more sun on economy.
-- Pumpkin can be planted over an existing plant to shield it.
+- Standard layout per row, house side first: Sunflowers in cols 0-1, attackers in cols 2-4,
+  a Wall-nut in col 5 or 6 IN FRONT of the attackers. Never plant attackers ahead of the Wall-nut.
+- Every row that has zombies needs an attacker. Targets: 1 attacker in every row by wave 4,
+  2 per row by wave 8, 3+ per row before flag waves (every 10th wave brings a big horde).
+- Aim for 6-8 Sunflowers early, then stop buying them and spend everything on defense.
+  Don't sit on more than ~150 sun: queue the next attacker or Wall-nut.
+- Fix UNDEFENDED and DANGER lanes (see the lane check) first. Use Cherry Bomb or Potato Mine
+  for emergencies; a mine needs time to arm, so put it a few columns ahead of the zombie.
 - Upgrade plants go on top of their base plant: gatling_pea on repeater, twin_sunflower on sunflower,
   winter_melon on melon_pult, spikerock on spikeweed, cob_cannon on the left of two side-by-side kernel_pults.
 - Each action is checked before it runs; invalid ones are rejected and you will see why next turn.

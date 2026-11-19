@@ -173,7 +173,8 @@ def important_change(old, new):
 # ---------------------------------------------------------------------------
 
 class Agent:
-    def __init__(self, brain, max_decisions=None, auto_sun=True, restart=False, levels=1, retries=0):
+    def __init__(self, brain, max_decisions=None, auto_sun=True, restart=False, levels=1, retries=0,
+                 until_level=50):
         self.ctl = Controller(move_duration=0.08)
         if not self.ctl.reader:
             sys.exit("Can't read game memory. Is Plants vs. Zombies running? (run as admin if needed)")
@@ -184,6 +185,7 @@ class Agent:
         self.restart = restart
         self.levels = levels
         self.retries = retries
+        self.until_level = until_level
         self.reset_plan()
         self.board_at_start = None
         self.decisions = 0
@@ -217,6 +219,8 @@ class Agent:
         if win32gui.GetForegroundWindow() != self.ctl.hwnd:
             self.ctl.wake()
         board = self.reader.board()
+        if board and self.reader.paused(board):
+            self.ctl.wake()
         if board and self.reader.paused(board):
             self.ctl.resume()
 
@@ -262,6 +266,8 @@ class Agent:
                 self.log(kind="transition", scene=scene, after_level=previous_level)
             elapsed = time.monotonic() - scene_since
             board = self.reader.board()
+            if board and scene in ("intro", "playing") and self.reader.paused(board):
+                self.ensure_focus()
             if board and self.reader.mode() == 43:   # mandatory first Zen Garden visit
                 self.ctl.focus()
                 tutorial = self.reader.tutorial(board)
@@ -287,6 +293,7 @@ class Agent:
                 time.sleep(1)
                 continue
             if scene == "playing":
+                self.ensure_focus()
                 return True
             if scene in ("challenge", "credits"):
                 return False
@@ -473,6 +480,16 @@ class Agent:
                 return True
         return False
 
+    def capture_result(self, level, outcome):
+        stamp = datetime.now().strftime("%H-%M-%S-%f")
+        path = self.log_path.with_name(f"{self.log_path.stem}_level_{level}_{outcome}_{stamp}.png")
+        try:
+            origin = self.ctl.to_screen(0, 0)
+            pyautogui.screenshot(region=(*origin, 800, 600)).save(path)
+            self.log(kind="result_screenshot", level=level, outcome=outcome, file=path.name)
+        except OSError as error:
+            self.log(kind="screenshot_error", level=level, error=str(error))
+
     def ask_brain(self, state, recent, queue):
         """Runs in the background thread."""
         t0 = time.time()
@@ -504,6 +521,7 @@ class Agent:
         last_threats, last_ask_t = None, 0.0
         last_available = set()
         last_reward_click = 0.0
+        awaiting_result = False
         unreadable_since = None
         brain_errors = 0
         pending = None
@@ -538,8 +556,15 @@ class Agent:
                     time.sleep(TICK)
                     continue
 
+                if awaiting_result and time.monotonic() - last_reward_click < 15:
+                    time.sleep(TICK)
+                    continue
+                awaiting_result = False
                 if time.monotonic() - last_reward_click >= 3 and self.click_reward(state):
                     last_reward_click = time.monotonic()
+                    awaiting_result = not state.get("zombies") and state["awards"][0]["type"] in {
+                        7, 8, 9, 10, 11, 12, 13, 14, 15, 18
+                    }
                     continue
 
                 if not self.readable(state):
@@ -625,6 +650,9 @@ class Agent:
                 return "transition_stalled", wins
             info = self.reader.level_info(self.reader.board())
             level = info["level"]
+            if level and level > self.until_level:
+                self.show(f"Already beyond the requested Adventure level {self.until_level}.")
+                return "target_reached", wins
             if self.levels > 1 and (level is None or (last_win is not None and level != last_win + 1)):
                 self.show(f"Expected the next Adventure board but reached level {level}.")
                 return "unexpected_level", wins
@@ -633,13 +661,15 @@ class Agent:
             self.show(f"Level {label} started ({info['special'] or info['terrain']}).")
             self.log(kind="level_start", **info)
             result = self.play()
+            if result in ("won", "lost"):
+                self.capture_result(level, result)
             if result == "won":
                 wins += 1
                 last_win = level
                 retries_left = self.retries
                 retry = False
                 self.show(f"Level {label} complete.")
-                if level == 50 or wins == self.levels:
+                if level == self.until_level or level == 50 or wins == self.levels:
                     return "won", wins
             elif result == "lost" and retries_left > 0:
                 retries_left -= 1
@@ -665,6 +695,7 @@ class Agent:
                         "transition_stalled": "Stopped while navigating to the next level.",
                         "read_error": "Stopped after repeated unreadable board state.",
                         "brain_error": "Stopped after three consecutive player errors."}
+            messages["target_reached"] = "The requested Adventure endpoint has already been passed."
             self.show(messages.get(outcome, outcome))
         except KeyboardInterrupt:
             self.show("Stopped by you.")
@@ -691,17 +722,22 @@ def main():
                         help="play up to N consecutive Adventure levels (default: one)")
     levels.add_argument("--campaign", action="store_const", const=50, dest="levels",
                         help="advance through Adventure until level 5-10 or a stop condition")
+    levels.add_argument("--until-level", type=int, metavar="N",
+                        help="advance through Adventure and stop after absolute level N (1-50)")
     ap.add_argument("--retries", type=int, default=0, metavar="N",
                     help="retry a lost level up to N times")
     args = ap.parse_args()
-    if not 1 <= args.levels <= 50 or args.retries < 0:
-        ap.error("--levels must be 1 through 50 and --retries must be nonnegative")
+    if not 1 <= args.levels <= 50 or args.retries < 0 or (
+        args.until_level is not None and not 1 <= args.until_level <= 50
+    ):
+        ap.error("level limits must be 1 through 50 and --retries must be nonnegative")
     try:
         brain = make_brain(args.brain)
     except Exception as e:  # noqa: BLE001
         sys.exit(f"Couldn't start the {args.brain} brain: {e}")
     Agent(brain, max_decisions=args.max_decisions, auto_sun=not args.no_auto_sun,
-          restart=args.restart, levels=args.levels, retries=args.retries).run()
+          restart=args.restart, levels=50 if args.until_level else args.levels, retries=args.retries,
+          until_level=args.until_level or 50).run()
 
 
 if __name__ == "__main__":

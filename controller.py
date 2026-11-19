@@ -91,6 +91,8 @@ class Controller:
         pyautogui.moveTo(*self.to_screen(gx, gy), duration=self.move_duration)
 
     def click(self, gx, gy, button="left"):
+        if not (0 <= gx < 800 and 0 <= gy < 600):
+            raise ValueError(f"click ({gx}, {gy}) is outside the game window")
         self.hover(gx, gy)
         pyautogui.click(button=button)
         time.sleep(CLICK_DELAY)
@@ -118,8 +120,8 @@ class Controller:
     def shovel_center(self):
         info = self._bank()
         if info:
-            _, bx, by, bw = info
-            return bx + bw + 35, by + 38
+            _, bx, _, bw = info
+            return bx + bw + 35, 38
         return SHOVEL
 
     # --- actions the AI will use ---------------------------------------------
@@ -156,20 +158,32 @@ class Controller:
     # Clicks on the lawn are ignored while paused, so: pause -> think -> resume -> act.
     DIALOG_POINTS = [(260, 200), (540, 200), (260, 380), (540, 380)]
 
-    def dialog_up(self):
-        """True if the focus-loss 'Game Paused' dialog is on screen (its panel is dark)."""
+    def dialog_kind(self):
+        """Recognize the saved-game and focus-loss overlays from their panel geometry."""
         x0, y0 = self.to_screen(0, 0)
         try:
             img = pyautogui.screenshot(region=(x0, y0, 800, 600))
         except OSError:  # screen locked / display asleep: can't look, assume no dialog
-            return False
-        return all(g < 80 and b >= g for (_, g, b) in (img.getpixel(p) for p in self.DIALOG_POINTS))
+            return None
+        continue_frame = (img.getpixel(p) for p in ((160, 260), (200, 360), (360, 360), (400, 405)))
+        if all(50 <= g < 180 and abs(r - g) < 15 and b > g + 15 for r, g, b in continue_frame):
+            return "continue"
+        if all(g < 80 and b >= g for (_, g, b) in (img.getpixel(p) for p in self.DIALOG_POINTS)):
+            return "pause"
+        return None
+
+    def dialog_up(self):
+        return self.dialog_kind() == "pause"
 
     def wake(self):
         """Bring the game to the front and dismiss the focus-loss dialog if it's up."""
         self.focus()
         time.sleep(0.3)
-        if self.dialog_up():
+        dialog = self.dialog_kind()
+        if dialog == "continue":
+            self.click(280, 371)
+            time.sleep(0.3)
+        elif dialog == "pause":
             self.click(395, 448)  # "Resume Game"
             time.sleep(0.3)
 

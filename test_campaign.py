@@ -47,12 +47,14 @@ def operator():
     op = agent.Agent.__new__(agent.Agent)
     op.log = Mock()
     op.show = Mock()
+    op.capture_result = Mock()
     op.ctl = Mock()
     op.reader = Mock()
     op.reset_plan()
     op.board_at_start = 100
     op.decisions = 0
     op.levels = 1
+    op.until_level = 50
     op.retries = 0
     op.auto_sun = False
     op.max_decisions = None
@@ -142,6 +144,40 @@ class ValidationTests(unittest.TestCase):
 
 
 class GeometryAndReaderTests(unittest.TestCase):
+    def test_shovel_stays_at_top_when_seed_bank_is_above_window(self):
+        ctl = Controller.__new__(Controller)
+        ctl._bank = Mock(return_value=(1000, 0, -87, 599))
+        self.assertEqual(ctl.shovel_center(), (634, 38))
+        ctl.hover = Mock()
+        with self.assertRaises(ValueError):
+            ctl.click(634, -49)
+        ctl.hover.assert_not_called()
+
+    def test_live_sun_pickup_does_not_need_an_array_id_tail(self):
+        reader = GameReader.__new__(GameReader)
+        raw = bytearray(O.COIN_SIZE)
+        struct.pack_into("<i", raw, O.CO_TYPE, 4)
+        struct.pack_into("<2f", raw, O.CO_X, 300, 200)
+        reader._ptr = Mock(return_value=1000)
+        reader._int = Mock(return_value=1)
+        reader._block = Mock(return_value=raw)
+        self.assertEqual(reader.coins(100), [{"x": 330, "y": 230, "type": 4}])
+
+    def test_saved_game_dialog_is_distinct_from_pause(self):
+        from PIL import Image
+        ctl = Controller.__new__(Controller)
+        ctl.to_screen = Mock(return_value=(0, 0))
+        image = Image.new("RGB", (800, 600), (20, 130, 20))
+        for point in ((160, 260), (200, 360), (360, 360), (400, 405)):
+            image.putpixel(point, (85, 87, 117))
+        with patch("controller.pyautogui.screenshot", return_value=image):
+            self.assertEqual(ctl.dialog_kind(), "continue")
+        image = Image.new("RGB", (800, 600), (20, 130, 20))
+        for point in ctl.DIALOG_POINTS:
+            image.putpixel(point, (30, 30, 45))
+        with patch("controller.pyautogui.screenshot", return_value=image):
+            self.assertEqual(ctl.dialog_kind(), "pause")
+
     def test_chooser_layout_uses_seed_positions_for_both_widget_layouts(self):
         reader = GameReader.__new__(GameReader)
         reader._ptr = Mock(side_effect=[10, 1000])
@@ -244,6 +280,19 @@ class GeometryAndReaderTests(unittest.TestCase):
 
 
 class LoopTests(unittest.TestCase):
+    def test_absolute_endpoint_stops_after_level_ten(self):
+        op = operator()
+        op.levels = 50
+        op.until_level = 10
+        op.get_to_playing = Mock(return_value=True)
+        op.reader.level_info.side_effect = [
+            {"level": 9, "special": None, "terrain": "day"},
+            {"level": 10, "special": None, "terrain": "day"},
+        ]
+        op.play = Mock(return_value="won")
+        self.assertEqual(op.play_levels(), ("won", 2))
+        self.assertEqual(op.play.call_count, 2)
+
     @patch("agent.time.sleep")
     def test_navigation_handles_loading_award_menu_and_intro(self, _):
         for start, expected in (
@@ -350,6 +399,22 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(op.play(), "won")
         op.ctl.click.assert_called_once_with(400, 300)
         self.assertEqual(op.decisions, 0)
+
+    @patch("agent.time.sleep")
+    def test_reward_animation_does_not_start_new_gameplay(self, _):
+        state = board()
+        state["awards"] = [{"x": 400, "y": 300, "type": 7}]
+        after = copy.deepcopy(state)
+        after["awards"] = []
+        op = operator()
+        op.reader.board.return_value = 100
+        op.reader.scene.side_effect = ["playing", "playing", "award", "award"]
+        op.reader.level_info.return_value = {"level": 3}
+        op.ensure_focus = Mock()
+        op.snapshot = Mock(side_effect=[state, after])
+        op.work_queue = Mock()
+        self.assertEqual(op.play(), "won")
+        op.work_queue.assert_not_called()
 
     @patch("agent.time.sleep")
     def test_manual_menu_is_not_a_win(self, _):
