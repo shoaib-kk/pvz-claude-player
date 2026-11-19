@@ -175,7 +175,7 @@ def important_change(old, new):
 
 class Agent:
     def __init__(self, brain, max_decisions=None, auto_sun=True, restart=False, levels=1, retries=0,
-                 until_level=50, journal=True):
+                 until_level=50, journal=True, journal_dir=None):
         self.ctl = Controller(move_duration=0.08)
         if not self.ctl.reader:
             sys.exit("Can't read game memory. Is Plants vs. Zombies running? (run as admin if needed)")
@@ -187,7 +187,7 @@ class Agent:
         self.levels = levels
         self.retries = retries
         self.until_level = until_level
-        self.journal = Journal() if journal else None
+        self.journal = Journal(journal_dir) if journal else None
         self.recorder = None
         self.loadout = []
         self.reset_plan()
@@ -782,6 +782,8 @@ def main():
                     help="retry a lost level up to N times")
     ap.add_argument("--no-journal", action="store_true",
                     help="don't read or write the player's lessons journal (journal/lessons.json)")
+    ap.add_argument("--journal-dir", metavar="DIR",
+                    help="keep the journal in DIR instead of journal/ (e.g. one per model)")
     args = ap.parse_args()
     if not 1 <= args.levels <= 50 or args.retries < 0 or (
         args.until_level is not None and not 1 <= args.until_level <= 50
@@ -793,7 +795,8 @@ def main():
         sys.exit(f"Couldn't start the {args.brain} brain: {e}")
     Agent(brain, max_decisions=args.max_decisions, auto_sun=not args.no_auto_sun,
           restart=args.restart, levels=50 if args.until_level else args.levels, retries=args.retries,
-          until_level=args.until_level or 50, journal=not args.no_journal).run()
+          until_level=args.until_level or 50, journal=not args.no_journal,
+          journal_dir=args.journal_dir).run()
 
 
 if __name__ == "__main__":

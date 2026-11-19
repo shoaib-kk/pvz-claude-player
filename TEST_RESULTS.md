@@ -25,6 +25,8 @@ Live tests use Claude Haiku at low effort on Steam GOTY 1.2.0.1096. Raw logs and
 | 2-3, attempt 1 | Lost at wave 10/10 | No sun producer in the loadout. The journal wrote 11 lessons (bring real damage, Puff-shrooms are short range, and others). |
 | 2-3, retry | Stalled on the plant chooser | New screen: the game's "You haven't chosen any sun producing plants" warning. The bot now detects it, answers Yes so the player's choice stands, and adds the warning to the journal timeline. Added a test. |
 | 2-3, attempts 2 and 3 | Lost at wave 10/10 both times | The loadout changed as the journal grew: Sun-shroom, then Sunflower plus Sun-shroom, and Fume-shroom. Each loss ended with 0 sun and no way to rebuild walls. Haiku at low effort is learning, but not yet enough to win. Stopped here. |
+| 2-3, Haiku low, attempts 4-6 (method 1: keep retrying) | Lost all three, at waves 9-10 | The journal kept growing, and the loadouts became more balanced (Sunflower, Peashooter, Wall-nut, Fume-shroom). Every loss still ended with no sun after Sunflowers were eaten. 104 decisions, zero failed clicks. Six losses in a row on 2-3. |
+| 2-3, Sonnet low, blank journal (method 2: stronger model) | **Won on the first try** | 28 decisions (median 2.0 s, none empty), 31 actions, zero failed clicks. Loadout: Sun-shroom, Sunflower, Puff-shroom, Fume-shroom, Wall-nut, Potato Mine. Its own summary: Fume-shrooms and Potato Mines in the middle columns did the killing. Grave Buster reward verified on screen. Its separate journal is in journal_sonnet/. |
 
 Run of 1-7 to 1-10: 163 decisions, 214 actions, zero failed clicks, no retries needed. 31 offline regression tests pass.
 
