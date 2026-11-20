@@ -34,12 +34,12 @@ CARDS = {
     "lily_pad": "Floats on water so other plants can be placed on it.",
     "squash": "Crushes the first zombie that comes near it.",
     "threepeater": "Shoots peas in three rows at once.",
-    "tangle_kelp": "Water plant that drags a zombie underwater.",
+    "tangle_kelp": "Water plant that drags a zombie underwater. Goes straight on water, no Lily Pad needed.",
     "jalapeno": "Burns every zombie in its row.",
     "spikeweed": "Hurts zombies that walk over it; can't be eaten. Land only.",
     "torchwood": "Peas that pass through it catch fire and do more damage.",
     "tall_nut": "A very tough wall that zombies can't jump over.",
-    "sea_shroom": "Water mushroom that shoots short-range spores.",
+    "sea_shroom": "Free water mushroom that shoots short-range spores. Goes straight on water, no Lily Pad needed.",
     "plantern": "Lights up the fog around it.",
     "cactus": "Shoots spikes that can pop balloons.",
     "blover": "Blows away the fog and all flying zombies.",
@@ -70,7 +70,7 @@ CARDS = {
 # Recharge: fast ~7.5 s, slow ~30 s, very slow ~50 s. Damage: "normal" is one pea (20).
 # Toughness: a typical plant survives about 300 bites of damage.
 ALMANAC = {
-    "peashooter": "recharge fast; damage normal; range whole row ahead",
+    "peashooter": "recharge fast; damage normal; range whole row toward the street",
     "sunflower": "recharge fast; +25 sun about every 24 s",
     "cherry_bomb": "recharge very slow; damage massive; 3x3 area around it; instant",
     "wall_nut": "recharge slow; toughness high (~13x a normal plant)",

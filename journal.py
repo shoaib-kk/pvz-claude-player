@@ -14,14 +14,17 @@ from datetime import datetime
 from pathlib import Path
 
 from plant_info import POTATO_MINE_ARM_SECONDS
+from sun_accounting import MECHANICS_AND_EVIDENCE, verified_costs
 
 SHOOTERS = {"peashooter", "snow_pea", "repeater", "gatling_pea", "threepeater", "split_pea",
             "cactus", "starfruit", "puff_shroom", "scaredy_shroom", "fume_shroom", "gloom_shroom",
             "cabbage_pult", "kernel_pult", "melon_pult", "winter_melon", "sea_shroom", "cattail"}
 
 ROOT = Path(__file__).resolve().parent
-MAX_LESSONS = 12          # general lessons
-MAX_SITUATION = 8         # lessons per situation
+MAX_LESSONS = 20          # general lessons
+MAX_SITUATION = 10        # lessons per situation
+# A new situation section starts as a copy of a related one: fog levels are night levels with a pool.
+SEED_FROM = {"fog": "night", "fog conveyor": "night"}
 
 REFLECT_SYSTEM = """You are the player in a run of Plants vs. Zombies, reviewing a level you just finished.
 You keep a short journal of lessons that you will read before future levels. It has general lessons
@@ -35,7 +38,18 @@ specific zombies), about things you control: which plants you bring, and what yo
 shovel where and when. Lawn mowers fire by themselves; plants can't be moved.
 At most %d general and %d situation lessons, one short sentence per lesson, most important first.
 Also write a one-sentence summary of why you won or lost this level.
+Separate observed facts (with event IDs) from your hypothesis and your next attempt's experiment.
+Assess whether your previous experiment and written plan were actually executed before judging
+whether they worked. Distinguish requested moves from completed moves; waiting and cancellation
+are execution outcomes. A fact about this attempt is not automatically a rule about all levels.
+For each new or changed lesson, give its scope, 1-based index, and supporting event IDs in
+lesson_evidence. References support observations, not proof of a hypothesis. Prior lessons without
+recorded evidence are unverified; you may retain, revise, or remove them yourself. Keep evidence
+out of the lesson sentences. Use current event IDs for new evidence; unchanged lessons retain
+their earlier provenance automatically. Keep observed to at most 4 items; hypothesis, next_attempt, and
+plan_assessment are each one short sentence. Choose the experiment yourself.
 Answer with JSON only.""" % (MAX_LESSONS, MAX_SITUATION)
+REFLECT_SYSTEM += MECHANICS_AND_EVIDENCE
 
 REFLECT_SCHEMA = {
     "type": "object",
@@ -43,8 +57,23 @@ REFLECT_SCHEMA = {
         "summary": {"type": "string"},
         "general_lessons": {"type": "array", "items": {"type": "string"}},
         "situation_lessons": {"type": "array", "items": {"type": "string"}},
+        "observed": {"type": "array", "maxItems": 4, "items": {
+            "type": "object", "properties": {
+                "fact": {"type": "string"},
+                "evidence": {"type": "array", "items": {"type": "string"}, "maxItems": 4},
+            }, "required": ["fact", "evidence"], "additionalProperties": False}},
+        "hypothesis": {"type": "string"},
+        "next_attempt": {"type": "string"},
+        "plan_assessment": {"type": "string"},
+        "lesson_evidence": {"type": "array", "maxItems": MAX_LESSONS + MAX_SITUATION, "items": {
+            "type": "object", "properties": {
+                "scope": {"type": "string", "enum": ["general", "situation"]},
+                "index": {"type": "integer", "minimum": 1},
+                "evidence": {"type": "array", "items": {"type": "string"}, "maxItems": 4},
+            }, "required": ["scope", "index", "evidence"], "additionalProperties": False}},
     },
-    "required": ["summary", "general_lessons", "situation_lessons"],
+    "required": ["summary", "general_lessons", "situation_lessons", "observed", "hypothesis",
+                 "next_attempt", "plan_assessment", "lesson_evidence"],
     "additionalProperties": False,
 }
 
@@ -84,43 +113,129 @@ class Journal:
     def section(self, situation):
         return list(self.data["sections"].get(situation, [])) if situation else []
 
+    def seed_section(self, situation):
+        """The first time a situation with a related parent comes up (fog is a night level), start
+        its section from a copy of the parent's lessons, followed by any lessons it already had."""
+        parent = SEED_FROM.get(situation)
+        seeded = self.data.setdefault("seeded", [])
+        if not parent or situation in seeded or not self.section(parent):
+            return
+        merged = list(dict.fromkeys(self.section(parent) + self.section(situation)))[:MAX_SITUATION]
+        self.data["sections"][situation] = merged
+        seeded.append(situation)
+        self.save()
+
     def prompt_block(self, situation=None):
         """Text appended to the player's system prompts."""
+        self.seed_section(situation)
         general, special = self.lessons, self.section(situation)
-        if not general and not special:
-            return ("\n\nYour journal is empty for this: you haven't finished a level like it yet. "
-                    "Work out what works by playing.")
-        text = "\n\nYour journal - lessons you wrote yourself after earlier levels:"
+        text = ("\n\nYour journal is empty for this: you haven't finished a level like it yet. "
+                "Work out what works by playing." if not general and not special else
+                "\n\nYour journal - strategy hypotheses you wrote after earlier levels "
+                "(revisable; current costs and mechanics take precedence):")
         if general:
             text += "\nGeneral:\n" + "\n".join(f"- {x}" for x in general)
         if situation:
             text += f"\nFor {situation} levels:\n" + ("\n".join(f"- {x}" for x in special)
                                                       if special else "- (none yet)")
+        previous = next((h for h in reversed(self.data.get("history", []))
+                         if h.get("situation") == situation and h.get("next_attempt")), None)
+        if previous:
+            text += "\nYour experiment for the next attempt: " + previous["next_attempt"]
         return text
 
-    def reflect(self, brain, level_label, outcome, report, situation=None, plan=None):
+    def earlier_attempts(self, level_label, limit=12):
+        """One factual line per earlier finished attempt at this level, oldest first."""
+        lines = []
+        for h in [h for h in self.data.get("history", []) if h.get("level") == level_label][-limit:]:
+            f = h.get("attempt_facts") or facts_from_evidence(h.get("evidence"))
+            if not f:
+                lines.append(f"  - {h.get('t', '?')}: {h.get('outcome', '?')} (no facts recorded)")
+                continue
+            wave = f.get("wave") or [0, 0]
+            parts = [f"{h.get('t', '?')}: {h.get('outcome', '?')} at wave {wave[0]} of {wave[1]}"]
+            if f.get("loadout"):
+                parts.append("loadout " + ", ".join(f["loadout"]))
+            if f.get("plants_placed") is not None:
+                parts.append(f"plants placed {f['plants_placed']}")
+            if f.get("sun_lost") is not None:
+                parts.append(f"sun value of plants destroyed {f['sun_lost']}")
+            if f.get("stalled_unspent_sun_seconds") is not None:
+                parts.append(f"queue stalled with unspent sun {f['stalled_unspent_sun_seconds']:.0f}s")
+            lines.append("  - " + "; ".join(parts))
+        return lines
+
+    def reflect(self, brain, level_label, outcome, report, situation=None, plan=None,
+                attempt=None, evidence=None, facts=None):
         """Ask the player to rewrite its journal. Returns the summary, or None."""
         ask = getattr(brain, "ask", None)
         if not ask:
             return None
         general = "\n".join(f"- {x}" for x in self.lessons) or "(empty)"
         special = "\n".join(f"- {x}" for x in self.section(situation)) or "(empty)"
+        previous = next((h for h in reversed(self.data.get("history", []))
+                         if h.get("situation") == situation), {})
+        evidence = evidence or {}
+        board = evidence.get("b0")
+        if not isinstance(board, dict):
+            board = None
+        costs = verified_costs(board)
+        earlier = self.earlier_attempts(level_label)
+        this = dict(facts or facts_from_evidence(evidence) or {})
         prompt = (f"Level {level_label} ({situation or 'unknown'} situation): you {outcome.upper()}.\n\n"
+                  + f"Attempt: {attempt or 'legacy'}; valid current event IDs: {', '.join(evidence)}.\n"
+                  + f"Your previous experiment: {previous.get('next_attempt', '(none recorded)')}\n"
+                  + "Verified packet sun costs (null means unknown; supports are separate):\n"
+                  + json.dumps(costs, ensure_ascii=False) + "\n"
+                  + "Check every retained or revised sun-spending claim against these costs. "
+                    "Distinguish packet spending, support spending, space/recharge/slot tradeoffs, "
+                    "and observed contributions. A plant's death alone does not measure its "
+                    "damage or time bought; do not infer zero contribution from disappearance.\n"
                   + (f"The plan you wrote before the level:\n{plan}\n\n" if plan else "")
+                  + ("Your earlier attempts at this level (recorded facts, oldest first):\n"
+                     + "\n".join(earlier) + "\n\n" if earlier else "")
                   + f"{report}\n\nYour journal before this level:\nGeneral:\n{general}\n"
-                  f"For {situation or 'this kind of'} levels:\n{special}")
+                  f"For {situation or 'this kind of'} levels:\n{special}\n"
+                  + "Prior lesson evidence (unlisted lessons have no recorded provenance):\n"
+                  + json.dumps(previous.get("lesson_evidence", []), ensure_ascii=False))
         effort = getattr(brain, "plan_effort", None)
         answer = (ask(REFLECT_SYSTEM, prompt, REFLECT_SCHEMA, effort=effort) if effort
                   else ask(REFLECT_SYSTEM, prompt, REFLECT_SCHEMA))
         lessons = _clean(answer.get("general_lessons", answer.get("lessons")), MAX_LESSONS)
         situation_lessons = _clean(answer.get("situation_lessons"), MAX_SITUATION)
         summary = str(answer.get("summary", "")).strip()
+        def references(refs):
+            return [r for r in refs if isinstance(r, str) and r in evidence][:4]
+        observed = [{"fact": str(o.get("fact", "")), "evidence": references(o.get("evidence", []))}
+                    for o in answer.get("observed", [])[:4] if isinstance(o, dict)]
+        links = []
+        for item in answer.get("lesson_evidence", []):
+            scope, index = item.get("scope"), item.get("index")
+            items = lessons if scope == "general" else situation_lessons if scope == "situation" else []
+            if type(index) is int and 1 <= index <= len(items):
+                refs = references(item.get("evidence", []))
+                links.append({"scope": scope, "index": index, "lesson": items[index - 1],
+                              "attempt": attempt, "evidence": refs})
+        inherited = {(link.get("scope"), link.get("lesson")): link
+                     for h in self.data.get("history", []) if h.get("situation") == situation
+                     for link in h.get("lesson_evidence", []) if link.get("evidence")}
+        linked = {(link["scope"], link["index"]) for link in links if link["evidence"]}
+        for scope, items in (("general", lessons), ("situation", situation_lessons)):
+            for index, lesson in enumerate(items, 1):
+                if (scope, index) not in linked and (scope, lesson) in inherited:
+                    links.append({**inherited[scope, lesson], "index": index})
         self.data["lessons"] = lessons
         if situation:
             self.data["sections"][situation] = situation_lessons
         self.data.setdefault("history", []).append({
             "level": level_label, "outcome": outcome, "situation": situation, "summary": summary,
             "plan": plan, "lessons": lessons, "situation_lessons": situation_lessons,
+            "attempt": attempt, "observed": observed,
+            "hypothesis": str(answer.get("hypothesis", "")),
+            "next_attempt": str(answer.get("next_attempt", "")),
+            "plan_assessment": str(answer.get("plan_assessment", "")),
+            "lesson_evidence": links, "evidence": evidence,
+            "verified_packet_costs": costs, "attempt_facts": this or None,
             "t": datetime.now().isoformat(timespec="seconds"),
         })
         self.save()
@@ -139,7 +254,22 @@ class Journal:
             md.append(f"- **{h['level']}** ({h['outcome']}, {h['t']}): {h['summary']}")
             if h.get("plan"):
                 md.append("  - Plan: " + " / ".join(x.strip() for x in h["plan"].splitlines() if x.strip()))
+            for field in ("plan_assessment", "hypothesis", "next_attempt"):
+                if h.get(field):
+                    md.append(f"  - {field.replace('_', ' ').capitalize()}: {h[field]}")
         (self.folder / "lessons.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+
+
+def facts_from_evidence(evidence):
+    """Attempt facts rebuilt from a stored reflection's evidence (final board, execution metrics)."""
+    board = (evidence or {}).get("b0")
+    if not isinstance(board, dict) or "wave" not in board:
+        return None
+    metrics = (evidence or {}).get("s0") or {}
+    planted = metrics.get("planted")
+    return {"loadout": [s["name"] for s in board.get("seeds", [])], "wave": list(board["wave"]),
+            "plants_placed": sum(planted.values()) if isinstance(planted, dict) else None,
+            "stalled_unspent_sun_seconds": metrics.get("queue_stalled_unspent_sun_seconds")}
 
 
 # Plants that disappear when they do their job, so disappearing isn't a loss.
@@ -151,9 +281,10 @@ MAYBE_USED = {"potato_mine"}     # exploded, or eaten while still arming - indis
 class LevelRecorder:
     """Factual timeline of one level, built from the boards sent to the player."""
 
-    def __init__(self, level_label, loadout=None):
+    def __init__(self, level_label, loadout=None, options=None):
         self.level_label = level_label
         self.loadout = list(loadout or [])
+        self.options = list(options or [])   # every plant the chooser offered
         self.events = []
         self.last = None
         self.lost_count = {}
@@ -161,6 +292,24 @@ class LevelRecorder:
         self.unarmed_mines = 0
         self.mower_wave = {}
         self.planted = {}
+        self.placed = 0           # plants that appeared on the lawn, replants included
+
+    def costs(self):
+        return verified_costs(self.last)
+
+    def sun_lost(self):
+        costs = self.costs()
+        if any(costs.get(k) is None for k in self.lost_count):
+            return None
+        return sum(costs[k] * v for k, v in self.lost_count.items())
+
+    def facts(self):
+        """Comparable numbers for this attempt, kept in the journal history."""
+        if not self.last:
+            return None
+        return {"loadout": self.loadout or [s["name"] for s in self.last.get("seeds", [])],
+                "wave": list(self.last.get("wave", [0, 0])), "plants_placed": self.placed,
+                "sun_lost": self.sun_lost()}
 
     def observe(self, state):
         if not state or not state.get("in_level"):
@@ -198,6 +347,8 @@ class LevelRecorder:
                     attackers = sum(1 for p in self.last["plants"] if p["row"] == row and p["type"] in SHOOTERS)
                     self.events.append(f"wave {wave}: the lawn mower in row {row} fired; that row had "
                                        f"{attackers} attackers and now has no mower")
+        seen = {(p["row"], p["col"], p["type"]) for p in self.last["plants"]} if self.last else set()
+        self.placed += sum(1 for p in state["plants"] if (p["row"], p["col"], p["type"]) not in seen)
         for p in state["plants"]:
             self.planted.setdefault(p["type"], set()).add((p["row"], p["col"]))
         self.last = state
@@ -218,17 +369,26 @@ class LevelRecorder:
         lines = []
         if self.loadout:
             lines.append("Loadout: " + ", ".join(self.loadout))
+        left_out = [n for n in self.options if n not in self.loadout]
+        if left_out:
+            lines.append("Plants you could have brought but didn't: " + ", ".join(left_out))
         if self.last:
             w = self.last.get("wave", [0, 0])
             lines.append(f"Reached wave {w[0]} of {w[1]}. Mowers left: {sum(self.last.get('mowers', []))}.")
         if self.unarmed_mines:
             lines.append(f"Potato mines eaten before they armed: {self.unarmed_mines}")
         if self.lost_count:
-            lines.append("Plants destroyed by zombies: " + ", ".join(f"{k} x{v}" for k, v in self.lost_count.items()))
+            costs = self.costs()
+            def cost(k):
+                return f"{costs[k]} sun each" if costs.get(k) is not None else "cost unknown"
+            lines.append("Plants destroyed by zombies: " + ", ".join(
+                f"{k} x{v} ({cost(k)})" for k, v in self.lost_count.items()))
+            if (lost := self.sun_lost()) is not None:
+                lines.append(f"Sun value of plants destroyed: {lost}")
         if self.used_count:
             lines.append("One-use plants used: " + ", ".join(f"{k} x{v}" for k, v in self.used_count.items()))
         lines.append("Timeline:")
-        lines += [f"  {e}" for e in self.events[-40:]] or ["  (no plants lost, no mowers used)"]
+        lines += [f"  [t{i + 1}] {e}" for i, e in list(enumerate(self.events))[-40:]] or ["  (no plants lost, no mowers used)"]
         if outcome == "lost" and (end := self.ending()):
             lines += ["", end]
         if final_board_text:

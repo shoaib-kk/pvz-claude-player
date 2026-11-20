@@ -443,6 +443,16 @@ class LoopTests(unittest.TestCase):
         op.play = play
         self.assertEqual(op.play_levels(), ("won", 2))
 
+    def test_restart_may_press_try_again_on_the_game_over_screen(self):
+        op = operator()
+        op.restart = True
+        op.get_to_playing = Mock(return_value=False)
+        op.play_levels()
+        self.assertTrue(op.get_to_playing.call_args.kwargs["retry"])
+        op.restart = False
+        op.play_levels()
+        self.assertFalse(op.get_to_playing.call_args.kwargs["retry"])
+
     def test_campaign_stops_at_boss_or_exhausted_retries(self):
         op = operator()
         op.levels = 50

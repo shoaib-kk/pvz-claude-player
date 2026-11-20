@@ -16,6 +16,7 @@ import os
 
 import offsets as O
 import plant_info
+from sun_accounting import MECHANICS_AND_EVIDENCE, accounting_lines
 
 # ---------------------------------------------------------------------------
 # Turning game state into text a model can read
@@ -32,19 +33,45 @@ SHOOTERS = {"peashooter", "snow_pea", "repeater", "gatling_pea", "threepeater", 
             "cabbage_pult", "kernel_pult", "melon_pult", "winter_melon", "sea_shroom", "cattail"}
 
 
+# Shooters that can hit something in another direction than straight toward the street.
+NOT_FORWARD_ONLY = {"split_pea", "starfruit", "cattail"}
+
+
+def can_hit_col(plant, plant_col, zombie_col):
+    """Can this attacker hit a zombie at zombie_col? Straight shooters and lobbers fire toward the
+    street (higher columns) only; a zombie standing on the plant's own tile still gets hit."""
+    return plant in NOT_FORWARD_ONLY or zombie_col >= plant_col
+
+
+def shot_behind_zombies(state, row, col, plant):
+    """True when a forward-only attacker at (row, col) has zombies in its row but all of them are
+    already past it (closer to the house), so none of its shots can reach them."""
+    if plant not in SHOOTERS or plant in NOT_FORWARD_ONLY:
+        return False
+    cols = [x_to_col(z["x"]) for z in state.get("zombies", [])
+            if z.get("row") == row and z["x"] < 820 and z.get("type") != "dr_zomboss"]
+    return bool(cols) and all(not can_hit_col(plant, col, zc) for zc in cols)
+
+
 def _row_summary(state, zombies):
-    """One line per row: attackers, front blocker, closest zombie. Helps the player spot weak lanes."""
-    out = ["", "Row summary (attackers = plants in the row that shoot or lob):"]
+    """One line per row: attackers, how many can reach the closest zombie, mower, closest zombie."""
+    out = ["", "Row summary (attackers = plants in the row that shoot or lob; "
+               "'can hit' = attackers at or left of the closest zombie):"]
     mowers = state.get("mowers", [])
     types = state.get("cells")
     for r, row in enumerate(state["grid"]):
         if types and all(t == O.CELL_DIRT for t in types[r]):
             continue
-        shooters = sum(1 for p in row if p in SHOOTERS)
+        attackers = [(c, p) for c, p in enumerate(row) if p in SHOOTERS]
         cols = [x_to_col(z["x"]) for z in zombies if z.get("row") == r]
-        near = f"{len(cols)} zombies, closest at col {min(cols)}" if cols else "no zombies"
         mower = "mower ready" if r < len(mowers) and mowers[r] else "no mower"
-        out.append(f"  row {r}: {shooters} attackers, {mower}, {near}")
+        if cols:
+            closest = min(cols)
+            hit = sum(can_hit_col(p, c, closest) for c, p in attackers)
+            out.append(f"  row {r}: {len(attackers)} attackers ({hit} can hit the closest zombie), "
+                       f"{mower}, {len(cols)} zombies, closest at col {closest}")
+        else:
+            out.append(f"  row {r}: {len(attackers)} attackers, {mower}, no zombies")
     return out
 
 
@@ -100,6 +127,7 @@ def describe(state, recent, queue=None, known_plants=(), *, compact=False):
             status = f"recharging, ready in {left:.0f}s" if left else "recharging"
         afford = "" if s["cost"] is None or s["cost"] <= state["sun"] else " (can't afford)"
         lines.append(f"  {s['slot']}: {s['name']}, {s['cost']} sun, {status}{afford}")
+    lines.extend(accounting_lines(state, queue))
     known = plant_info.describe_plants([s["name"] for s in state["seeds"] if s["name"] not in known_plants],
                                        state.get("level"))
     if known:
@@ -110,12 +138,18 @@ def describe(state, recent, queue=None, known_plants=(), *, compact=False):
     lines.append("")
     if compact:
         lines.append("Lawn: rows top to bottom, columns 0-8 house to street. "
-                     ". empty, # dirt, M mower, % plant health.")
+                     ". empty, # dirt, M mower, % plant health, Z:name zombie in that cell, "
+                     ">> zombies still beyond col 8.")
     else:
         lines.append("Lawn (row 0 = top, col 0 = next to the house, zombies walk from col 8 toward col 0).")
         lines.append("Each cell: plant name, '.' = empty grass, '#' = bare dirt (can't plant there).")
         lines.append("'M' at the start of a row = lawn mower still available. "
-                     "(N%) = a damaged plant's remaining health.")
+                     "(N%) = a damaged plant's remaining health. 'Z:name' = a zombie in that cell; "
+                     "'>> name' after a row = zombies still beyond col 8.")
+    lawn_zombies = {}
+    for z in state["zombies"]:
+        if z["x"] < 820 and z.get("type") != "dr_zomboss":
+            lawn_zombies.setdefault((z.get("row"), max(0, x_to_col(z["x"]))), []).append(z["type"])
     stacked = {}
     for p in state["plants"]:
         if p["type"] in ("pumpkin", "lily_pad", "flower_pot"):
@@ -151,11 +185,15 @@ def describe(state, recent, queue=None, known_plants=(), *, compact=False):
                 name += notes[(r, c)]
             if (r, c) in stacked:
                 name = "+".join(stacked[(r, c)] + ([name] if plant else []))
+            for zname in lawn_zombies.get((r, c), []):
+                name += f" Z:{zname}"
             cells.append(name)
+        beyond = [n for (zr, zc), names in sorted(lawn_zombies.items()) if zr == r and zc > 8 for n in names]
+        tail = ("  >> " + ", ".join(beyond)) if beyond else ""
         if compact:
-            lines.append(f"  row {r} {mower}: " + "|".join(cells))
+            lines.append(f"  row {r} {mower}: " + "|".join(cells) + tail)
         else:
-            lines.append(f"  row {r} {mower} | " + " | ".join(cells))
+            lines.append(f"  row {r} {mower} | " + " | ".join(cells) + tail)
     lines.append("")
     zs = [z for z in state["zombies"] if z["x"] < 820 or z["type"] == "dr_zomboss"]
     if zs:
@@ -179,8 +217,13 @@ def describe(state, recent, queue=None, known_plants=(), *, compact=False):
         lines.extend(_row_summary(state, zs))
     if queue:
         lines.append("")
-        lines.append("Your unfinished plan (will be replaced by your answer):")
-        lines.extend(f"  {action_text(a) if compact else json.dumps(a)}" for a in queue)
+        lines.append("Your unfinished queue (keep, append, cancel IDs, or replace):")
+        for a in queue:
+            policy = "independent" if a.get("independent") else "ordered"
+            group = f", group {a['group']}" if a.get("group") else ""
+            lines.append(f"  #{a.get('id', '?')} {action_text(a)}, {policy}{group}")
+    if state.get("execution"):
+        lines += ["", state["execution"]]
     if recent:
         lines.append("")
         lines.append("Results of your recent actions, and things that happened:")
@@ -192,8 +235,8 @@ def describe(state, recent, queue=None, known_plants=(), *, compact=False):
 # Claude
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are playing Plants vs. Zombies. You get the current board and give a build plan:
-an ordered list of up to 5 actions.
+SYSTEM_PROMPT = """You are playing Plants vs. Zombies. You get the current board and control your build queue.
+Give a short reasoning sentence, edit, and up to 5 actions (15 pending maximum).
 
 Actions:
 - plant: put a seed from your seed packets on an empty cell.
@@ -203,16 +246,27 @@ Actions:
 How your plan is carried out:
 - The game keeps running while you think (a few seconds), so zombies will have moved a little
   by the time your plan starts. Plan slightly ahead.
-- Actions run strictly in your order. Each one happens as soon as you have enough sun and the seed
-  has recharged, so you can queue things you can't afford yet ("save up" = put it next in the plan).
-- Your new plan replaces any unfinished old one.
+- edit="keep": leave the queue alone; actions=[]. edit="append": add actions at the end.
+  edit="cancel": cancel the IDs in cancel=[...]; actions=[]. edit="replace": supply the new queue.
+- Existing queue actions have IDs. When retaining one in a replacement, copy its id and move.
+  Finished IDs never run again. To request a new move, omit id. Missing edit defaults to replace.
+- Actions are ordered by default: they wait for earlier actions, sun, and seed recharge.
+  Set independent=true on an action to let it run even while earlier actions wait.
+- Optionally give adjacent actions the same positive group number and independent value.
+  A group waits for all its steps to be legal, funded, and ready, then runs in order. No supports
+  or partners are added automatically. A group cannot use the same recharging packet twice.
+  Grouping is a readiness check, not a guarantee: a live change can interrupt the remaining steps.
+  Canceling one member cancels its group. Group numbers are local to this answer.
 - You are asked again when the plan is used up, or when something important happens
   (a zombie shows up in a new place, you lose a plant, a lawn mower is used).
-- An empty plan means: do nothing until something changes.
+- To wait with no pending actions, use replace with actions=[].
 
 Game rules:
 - Sun is collected for you automatically. Plants cost sun; seeds recharge after use.
 - Zombies walk along their row toward the house (col 0) and eat plants in their way.
+- Shooting and lobbing plants fire toward the street (higher columns) only, unless their
+  description says otherwise. They can't hit a zombie in a lower column than their own: once a zombie
+  has walked past a plant, that plant can no longer hurt it.
 - Each row has one lawn mower. It fires by itself when a zombie reaches the house end of the row,
   clears that row, and is gone. A zombie that reaches the house in a row with no mower loses the game.
 - Plants can't be moved; the shovel removes one (no sun back).
@@ -229,8 +283,11 @@ DECISION_SCHEMA = {
     "type": "object",
     "properties": {
         "reasoning": {"type": "string"},
+        "edit": {"type": "string", "enum": ["keep", "append", "cancel", "replace"]},
+        "cancel": {"type": "array", "items": {"type": "integer"}, "maxItems": 15},
         "actions": {
             "type": "array",
+            "maxItems": 5,
             "items": {
                 "type": "object",
                 "properties": {
@@ -238,21 +295,26 @@ DECISION_SCHEMA = {
                     "seed": {"type": "string"},
                     "row": {"type": "integer"},
                     "col": {"type": "integer"},
+                    "id": {"type": "integer"},
+                    "independent": {"type": "boolean"},
+                    "group": {"type": "integer", "minimum": 0},
                 },
                 "required": ["type"],
                 "additionalProperties": False,
             },
         },
     },
-    "required": ["reasoning", "actions"],
+    "required": ["reasoning", "edit", "actions"],
     "additionalProperties": False,
 }
 
 
 PICK_SYSTEM = """You are about to play a level of Plants vs. Zombies and must choose your plants.
-Facts: in pool/fog levels, rows 2 and 3 are water (only Lily Pads and water plants go there directly).
-On the roof every plant needs a Flower Pot. At night and in fog there is no falling sun. Mushrooms
-sleep during the day unless woken by a Coffee Bean. Falling sun is collected for you automatically.
+Facts: in pool/fog levels, rows 2 and 3 are water. Aquatic plants (lily_pad, sea_shroom, tangle_kelp...)
+go directly on water; any other plant needs a Lily Pad under it there.
+On the roof every plant needs a Flower Pot. Night and fog levels take place at night: there is no
+falling sun and mushrooms are awake. In day, pool and roof levels mushrooms sleep unless woken by a
+Coffee Bean. Falling sun is collected for you automatically.
 Upgrade plants (gatling_pea, gold_magnet, cob_cannon...) can only be planted on top of their base
 plant, so they need that base plant in the loadout too.
 Pick exactly the number of plants asked for, using only names from the list.
@@ -328,13 +390,14 @@ class Notes:
                           + "\n".join(lines)) if lines else ""
 
     def system(self, base):
-        text = base + (self.knowledge or "") + (self.notes or "")
+        text = base + MECHANICS_AND_EVIDENCE + (self.knowledge or "") + (self.notes or "")
         if self.plan:
             text += ("\n\nYour game plan for this level (you wrote it before the level started; "
                      "follow it unless the board shows it isn't working):\n" + self.plan.strip())
         return text
 
     def pick_seeds(self, options, slots, zombies, forced=None, terrain="day"):
+        self.last_options = [o["name"] for o in options]    # logged with the pick
         answer = self.ask(self.system(PICK_SYSTEM),
                           pick_prompt(options, slots, zombies, forced, terrain, self.level),
                           PICK_SCHEMA, effort=self.plan_effort)
@@ -408,7 +471,7 @@ def find_claude_exe():
 
 
 PERSISTENT_NOTE = ("\n\nYou will receive a new board after every plan in this conversation. "
-                   "Only the latest board is current; earlier boards are out of date.")
+                   "Only the latest board and queue are current; earlier ones are out of date.")
 
 
 class ClaudeCodeBrain(Notes):

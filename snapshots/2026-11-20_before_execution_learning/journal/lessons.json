@@ -1,0 +1,143 @@
+{
+  "lessons": [
+    "Never plant sun producers (sunflower or sun_shroom) in a row that zombies walk down, especially cols 2-4; this run lost 4 sun_shrooms and 2 sunflowers that way and the economy never recovered.",
+    "Place sun producers only in the back columns (0-1) or behind a wall_nut, and replace them immediately if they die, since night income comes only from them.",
+    "Every row zombies enter needs a sustained damage source: buy a peashooter early for each lane that gets zombies, because rows with 0 attackers let zombies walk straight to the house.",
+    "Coneheads (~370 armor) and screen doors take far more damage than a lone wall_nut can absorb; when one appears, add a second wall or a fume_shroom behind the wall before it reaches col 3.",
+    "Fume_shroom works best directly behind a wall_nut so zombies bunch in its short radius, and the wall must be replanted the moment it breaks.",
+    "Cherry_bomb was in the loadout but never bought; save 150 sun for when two or more zombies bunch in one row near cols 2-4, since it clears a clump at once.",
+    "Keep at least 50 sun in reserve for an emergency wall_nut and count income before every purchase so you never reach wave 9 with under 60 sun.",
+    "Lawn mowers are emergency tools: this run spent four by wave 7 on single zombies, leaving none for waves 8-9, so use a mower only when a row is about to reach the house with no answer.",
+    "Stagger damage across rows so two armored zombies do not stack in one row; a single unanswered row breaks through first.",
+    "Avoid planting on graves (cells marked grave block placement) and plan lanes around them before wave 1.",
+    "Do not spend early sun on potato mines or extra sun_shrooms in the lane; zombies reach them before they arm and the sun is gone for the rest of the game."
+  ],
+  "history": [
+    {
+      "level": "2-2",
+      "outcome": "won",
+      "summary": "Won Level 2-2 by surviving all 20 waves, but only because the two lawn mowers at the end and cherry bombs covered for a line of puff and sun shrooms that kept getting chewed through by conehead and buckethead zombies; the mushroom-heavy economy left no real front-line defense.",
+      "lessons": [
+        "Mushrooms (puff and sun) are fragile and die fast to conehead and buckethead zombies, so don't rely on them as the front line; put wall_nut blockers in front of attackers in every active row.",
+        "Lost 28 puff_shrooms and 16 sun_shrooms, so puff_shroom spam in the middle of the lawn is a poor trade; keep fewer, better-protected shooters instead of refilling the same cells.",
+        "Bring snow_pea or another real damage dealer early; the mushroom loadout had too little sustained damage to kill armored zombies before they reached the house.",
+        "Potato mines in the path of the walking lane were often gone before arming or were eaten; place them well ahead of the zombie entry, at least a few columns out, and plant them early enough to arm before wave 15.",
+        "Save cherry_bomb for clusters of armored zombies in the same row (buckethead, conehead) near the house; it recharges slowly (150 sun), so plan around its long cooldown.",
+        "Sun economy was tight at the end (30 sun with 25-50 sun plants); bank sun early and keep a reserve for rebuilding walls and shooters after each wave.",
+        "Track mower usage: mowers were spent in wave 15, 17, and 20, so the final waves relied on them; treat a used mower as a lost safety net and don't count on it for later rows.",
+        "Rows 2, 3, and 4 had the most losses; spread blockers and damage across all five rows instead of concentrating them in the middle lanes."
+      ],
+      "t": "2026-11-19T14:18:52"
+    },
+    {
+      "level": "2-3",
+      "outcome": "lost",
+      "summary": "Lost Level 2-3 on wave 10 of 10 because the mushroom-only loadout (puff, sun, fume) had too little sustained damage and too few durable blockers, so coneheads and screen doors chewed through the lawn and the last rows overran the house after both mowers were spent by wave 9.",
+      "lessons": [
+        "Always bring a real sustained damage dealer such as snow_pea and bank enough sun to buy it (175); a mushroom-only loadout could not kill armored zombies fast enough.",
+        "Put a wall_nut directly in front of every active attacker in every row before the zombies arrive, and re-plant walls immediately after they fall; unshielded puff and sun shrooms died to coneheads and screen doors every wave.",
+        "Puff_shroom has very short range and sun_shroom produces no damage, so do not count them as the row's defense; each row needs at least one shooter that can reach the zombies before they touch the walls.",
+        "Spread attackers across all five rows instead of stacking them in the middle lanes; rows 1 through 3 took most of the losses and got mowered first.",
+        "Potato mines placed in the walking lane were eaten or lost before arming, so plant them well ahead of the zombie entry (several columns out) and at least one wave before the zombies arrive.",
+        "Save fume_shroom (75) for rows where several zombies bunch up in the same short range; a single fume spray is a poor use of its cost against lone zombies.",
+        "Track each lawn mower as a single-use life: it fires once and is gone, so spend mowers only when a row is about to reach the house and never on rows that can still be held by walls.",
+        "Keep a sun reserve of at least 50 after every wave for rebuilding walls and shooters; this run ended with 30 sun and could not afford wall_nut or snow_pea in the final wave.",
+        "Mushrooms are awake at night, so plan the lineup assuming they will be fragile and the sun economy will be thin; prefer sun-producing plants early only if they are protected by a wall.",
+        "Check the wave composition before committing: coneheads and screen doors appear by wave 4 to 5 and need multi-hit damage, so the loadout must scale damage by mid-game, not just add more mushroom bodies.",
+        "Cherry_bomb (150 sun, slow recharge) is the best answer to clusters of armored zombies in one row near the house; save it for that moment instead of spending sun on repeated puff spam."
+      ],
+      "t": "2026-11-19T14:24:08"
+    },
+    {
+      "level": "2-3",
+      "outcome": "lost",
+      "summary": "Lost Level 2-3 at wave 10 of 10 because the puff_shroom-only lineup never had enough damage to kill armored coneheads and screen doors, and with 0 sun left I could not rebuild walls or add a shooter.",
+      "lessons": [
+        "Puff_shroom costs 0 sun but has very short range and little damage, so a puff-only lineup cannot kill coneheads or screen doors; bank for a real damage dealer such as snow_pea (175) before wave 7.",
+        "Puffs planted at col 3 were eaten by every zombie that reached them, so keep a wall_nut (50) directly in front of each active shooter in every row before wave 7, when screen doors and coneheads appear.",
+        "Never drop below about 50 sun after a wave: this run ended with 0 sun and could not replant wall_nut or snow_pea in waves 9 and 10.",
+        "Wall_nut is the cheapest way to hold a row, so keep one ready to replant immediately after each fall rather than spending sun on extra mushrooms.",
+        "Lawn mowers are single-use and fire automatically; they bought only one wave each here, so they are a last-line save, not a substitute for walls and damage.",
+        "Multiple zombies (conehead, screen_door, zombie) in one row at col 3 overwhelm a lone shooter; spread walls and damage so no row has to absorb three armored zombies at once.",
+        "Cherry_bomb (150) and potato_mine (25) were never tested on this level; if a row is about to be overrun by bunched armored zombies, a cherry_bomb placed near the house is the planned answer, but it must be bought before sun runs out.",
+        "Plan the sun budget per wave: count income from sun-producing plants versus the cost of walls and shooters before committing, since mushrooms at night give no sun and the economy is thin."
+      ],
+      "t": "2026-11-19T14:33:19"
+    },
+    {
+      "level": "2-3",
+      "outcome": "lost",
+      "summary": "Lost at wave 10 of 10 because the night economy (no falling sun, weak sun_shroom income, one sunflower) left me unable to rebuild walls and damage, so puff_shrooms and wall_nuts were chewed through by conehead and screen_door zombies until the lawn overran.",
+      "lessons": [
+        "At night there is no falling sun, so bring at least two real sun producers (sunflowers, not just sun_shroom) and protect them; sun_shroom income was too slow to fund rebuilding.",
+        "Hold a sun reserve of about 50 after every wave so wall_nut can be replanted the moment it falls; in this run I hit 0 sun and could not replant in waves 9 and 10.",
+        "Puff_shroom is free filler with very short range; it cannot stop coneheads or screen_doors, so never let puffs be the main line in a row.",
+        "Place a wall_nut directly in front of each damage dealer (fume_shroom or snow_pea) from wave 7 on, since armored zombies chew through unprotected shooters in seconds.",
+        "Fume_shroom (75) hits every zombie in a short radius, making it the best answer to bunched armored zombies; buy it early and place it just behind a wall.",
+        "Snow_pea (175) was unaffordable when needed; save toward it earlier or skip it, because a 175 sun purchase starves walls and sun income on this level.",
+        "Wall_nut was lost five times; when a row has two or more armored zombies, double-wall that row instead of replanting a single nut after it breaks.",
+        "Avoid letting three armored zombies (conehead, screen_door, normal) collect in one row near col 3; kill or slow them in the approach lanes before they bunch up.",
+        "Lawn mowers bought only one wave each here; treat them as a last-resort save and not as a substitute for walls and damage.",
+        "Track the per-wave sun budget before buying: count income from producers against the cost of walls and shooters, and do not commit to a purchase that leaves less than about 50 sun.",
+        "Cherry_bomb (150) and potato_mine (25) were never tested on this level; decide in advance whether to buy cherry_bomb for a bunched late-wave row, because by wave 9 there is no sun left to buy it."
+      ],
+      "t": "2026-11-19T14:39:28"
+    },
+    {
+      "level": "2-3",
+      "outcome": "lost",
+      "summary": "Lost level 2-3 at wave 10 of 10: the sun economy was too thin at night (no falling sun, only two sunflowers that kept dying), so walls and shooters could not be rebuilt, and puff_shroom/fume_shroom with no real front line got overrun by bunched coneheads and screen_doors in every row.",
+      "lessons": [
+        "At night there is no falling sun, so build at least two or three sunflowers in the back columns early and never let them die; sun_shroom income is too slow to pay for rebuilding.",
+        "Keep a reserve of about 50 sun after every wave so wall_nut can be replanted immediately; running to 0 sun meant no replants in waves 9 and 10.",
+        "Puff_shroom has very short range and cannot stop coneheads or screen_doors; never rely on puffs as the main line, and do not spend the starting sun on them as filler.",
+        "Put a wall_nut directly in front of every fume_shroom or peashooter from wave 6 on, because coneheads and screen_doors chew through unprotected mushrooms in seconds.",
+        "Fume_shroom (75) is the best answer to bunched armored zombies; place it just behind a wall so its radius hits the whole group.",
+        "Do not let two or more armored zombies (conehead, screen_door) collect in one row; deal with them in the approach lanes before they reach the house.",
+        "When a row has two or more armored zombies, double-wall that row instead of replanting a single nut after each break.",
+        "Lawn mowers only buy one wave each; use them as a last-resort save, not as a substitute for walls and damage.",
+        "Before each purchase, count the per-wave sun income against the cost of walls and shooters, and skip buys that drop sun below about 50.",
+        "Buy a peashooter or two early for steady damage down the rows; mushrooms alone could not kill the late-wave armored groups.",
+        "Cherry_bomb (150) and potato_mine (25) were never tested here; decide before wave 8 whether to save for a cherry_bomb for a bunched late-wave row, since sun runs out by wave 9."
+      ],
+      "t": "2026-11-19T14:51:35"
+    },
+    {
+      "level": "2-3",
+      "outcome": "lost",
+      "summary": "Lost at wave 9 of 10 because most rows had no damage dealers, so coneheads and regular zombies walked through walls and fragile sun_shrooms, while wasted potato mines and early mower use drained sun and cover.",
+      "lessons": [
+        "Every row that zombies enter needs at least one damage source (peashooter or fume_shroom behind a wall); this level's rows sat at 0 attackers for most of the game and zombies just walked to the house.",
+        "Potato mines lost five times (wasted 125 sun) because zombies reached them before they armed; only plant them where they will not be touched for about 15 seconds, or skip them entirely.",
+        "Sun_shrooms placed in the zombie lane died four times; keep sun producers in back columns behind a wall, never in the path of an approaching row.",
+        "Coneheads (about 370 armor) break a single wall and then a lone shooter; when a conehead is in a row, put a second wall or a fume_shroom in front of the shooter before it reaches col 3.",
+        "Place fume_shroom directly behind a wall_nut so the zombies bunch up in its short radius, and replant the wall immediately when it breaks.",
+        "Do not spend the early sun on sun_shrooms and potato mines; by wave 9 sun was only 60 and no replanting was possible.",
+        "Hold lawn mowers for the final two or three waves; this run burned mowers in waves 3, 5, and 8 on single zombies that a peashooter could have handled.",
+        "Count sun income per wave before every purchase and keep at least 50 in reserve for an emergency wall_nut.",
+        "Stagger damage across rows instead of letting two armored zombies build up in one row, since a single unanswered row breaks through first.",
+        "Sunflower production at night is the only income, so protect the first two or three sunflowers with walls early rather than rebuilding them later."
+      ],
+      "t": "2026-11-19T14:56:22"
+    },
+    {
+      "level": "2-3",
+      "outcome": "lost",
+      "summary": "Lost on level 2-3 at wave 9 of 10 because sun income was wiped out early (sun_shrooms and sunflowers planted in zombie lanes kept dying), leaving no sun to rebuild and too few sustained attackers to stop armored coneheads and screen doors.",
+      "lessons": [
+        "Never plant sun producers (sunflower or sun_shroom) in a row that zombies walk down, especially cols 2-4; this run lost 4 sun_shrooms and 2 sunflowers that way and the economy never recovered.",
+        "Place sun producers only in the back columns (0-1) or behind a wall_nut, and replace them immediately if they die, since night income comes only from them.",
+        "Every row zombies enter needs a sustained damage source: buy a peashooter early for each lane that gets zombies, because rows with 0 attackers let zombies walk straight to the house.",
+        "Coneheads (~370 armor) and screen doors take far more damage than a lone wall_nut can absorb; when one appears, add a second wall or a fume_shroom behind the wall before it reaches col 3.",
+        "Fume_shroom works best directly behind a wall_nut so zombies bunch in its short radius, and the wall must be replanted the moment it breaks.",
+        "Cherry_bomb was in the loadout but never bought; save 150 sun for when two or more zombies bunch in one row near cols 2-4, since it clears a clump at once.",
+        "Keep at least 50 sun in reserve for an emergency wall_nut and count income before every purchase so you never reach wave 9 with under 60 sun.",
+        "Lawn mowers are emergency tools: this run spent four by wave 7 on single zombies, leaving none for waves 8-9, so use a mower only when a row is about to reach the house with no answer.",
+        "Stagger damage across rows so two armored zombies do not stack in one row; a single unanswered row breaks through first.",
+        "Avoid planting on graves (cells marked grave block placement) and plan lanes around them before wave 1.",
+        "Do not spend early sun on potato mines or extra sun_shrooms in the lane; zombies reach them before they arm and the sun is gone for the rest of the game."
+      ],
+      "t": "2026-11-19T15:01:14"
+    }
+  ]
+}

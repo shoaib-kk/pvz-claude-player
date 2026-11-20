@@ -2,10 +2,14 @@
 
 Claude plays Plants vs. Zombies GOTY on Windows. It reads a text snapshot of the lawn and decides what to plant or shovel. A Python controller turns those decisions into clicks in the running game.
 
+![One real decision from level 3-10: the script reads the game, notices a conehead in an undefended row, asks Claude, and plants Claude's to-do list](docs/how-it-works.gif)
+
+*One real decision from level 3-10. The script reads the game every 0.15 s and does all the clicking. Claude is only asked when something changes, and answers with a to-do list of up to five plantings.*
+
 ## How it works
 
 1. **Read the lawn.** [`state.py`](state.py) reads the game process using build-specific offsets from [`offsets.py`](offsets.py). The snapshot includes sun, seed costs and recharge status, plant positions, zombies, lawn mowers, and the current wave. [`brains.py`](brains.py) turns that snapshot into text, with a grid Claude can use to choose cells.
-2. **Ask Claude for a plan.** Claude returns up to five ordered actions as JSON. The game keeps running while Claude thinks in a background thread. The planner is called when its queue runs out and something is affordable, when a threat changes, or after about 30 seconds if something is affordable.
+2. **Ask Claude for a plan.** Claude returns up to five actions as JSON and chooses whether to keep, append to, cancel IDs from, or replace its queue (at most 15 pending). The game keeps running while Claude thinks. Action IDs preserve unfinished moves and prevent completed IDs from being replayed by late answers. Ordinary threat calls retain a ten-second safety interval.
 3. **Check and execute each move.** [`agent.py`](agent.py) checks queued actions against the live board. If Claude queues a Peashooter at 75 sun, for example, it waits until there is 100 sun and the seed has recharged. It checks graves, craters, aquatic plants, Lily Pads, Flower Pots, sleeping mushrooms, and upgrades. [`controller.py`](controller.py) uses terrain-specific click positions for five-row lawns, six-row pool boards, and the roof slope.
 4. **Handle special levels.** Conveyor cards are free, single-use plants whose click positions move across the bank. Wall-nut Bowling limits launches to the first three columns. Vasebreaker exposes temporary seed packets and adds a vase-breaking action to Claude's plans. Scripted reflexes click zombies in Whack-a-Zombie and counter Zomboss fire and ice balls with the matching instant plant. Sun and coin collection are also scripted.
 5. **Advance through Adventure.** A level ends after the game changes to a confirmed result screen. Consecutive-level mode navigates the title screen, rewards, Crazy Dave dialogue, plant selection, and the intervening Almanac, shop, shovel tutorial, and Zen Garden tutorial. It clears the old plan between boards and checks the next Adventure level number. It can retry losses up to a specified count and finishes at 5-10.
@@ -18,7 +22,25 @@ Menus and transitions use a deterministic bot and consume zero Claude decisions.
 
 The local JSONL log records each board snapshot sent to Claude, its plan, which actions went through, and the level result. It also captures response times and token usage when available. The recording overlay shows Claude’s latest explanation and planned moves.
 
-The agent skips periodic Claude calls when the wave, threats, plants, and affordable cards are unchanged. It sends a compact board and starts a fresh Claude Code conversation after three decisions by default. The player's level plan and journal carry forward across those resets. [Player usage report](usage_report.py)
+The agent skips most periodic Claude calls when the wave, threats, plants, and affordable cards are unchanged; free-card idle checks use the bounded backoff described below. It sends a compact board and starts a fresh Claude Code conversation after three decisions by default. The player's level plan and journal carry forward across those resets. [Player usage report](usage_report.py)
+
+### Player-controlled execution and retry learning
+
+Actions remain ordered unless Claude sets `independent: true`, which allows that action to bypass earlier waiting moves. Claude may give adjacent actions the same positive `group` number and scheduling policy. The executor checks the whole group's legality, combined sun cost, and packet readiness before beginning it, then rechecks each step live. It never chooses partners or inserts supporting plants. If a step fails, the remaining group steps are reported as rejected. Canceling a member cancels its group. Groups cannot repeat a packet that must recharge between uses. Group numbers belong to the answer that created them.
+
+The compact decision response is `{"reasoning":"...","edit":"keep","actions":[]}`. Other edits are `append`, `replace`, and `cancel` (with `cancel: [action IDs]` and empty actions). Retain an existing move in a replacement by copying its ID and move; a different move needs a new ID assigned by the executor. Bare actions without an edit retain compatibility with the rule-based test player. Free cards count as available actions; unchanged free-card idle checks back off from 30 to 120 seconds after fruitless requests.
+
+Each attempt records action IDs, issued/completed/rejected/failed/canceled/unfinished states, waiting intervals, and queue stalls with unspent sun. Board prompts receive only counts by seed and up to three current waits. Reflection receives the full action lifecycle summary, the plant/mower timeline, and final observed board. It separates observations, hypotheses, its own next experiment, and assessment of whether its written plan was executed. Evidence references and supporting events are stored in journal history, not in the lessons sent with each board. Old notebooks remain readable; the operator does not rewrite their strategy.
+
+`audit_execution.py 'logs/run_*.jsonl' --level 31 --output research/comparison.json` reports attempt metrics. The frozen pre-change baseline is `research/baseline_4-1_2026-11-20.json`. Historical blocked time uses sparse decision snapshots and is explicitly estimated; old prose plans have no independently measured adherence score. New lifecycle metrics use live polling, and plan adherence remains the player's assessment rather than an automatic judgment of strategy. Keep Haiku and Sonnet comparisons separate.
+
+`check_player_contract.py execution-tracking`, `queue-editing`, or `reflection` makes one Haiku-low player call on recorded evidence without accessing the game. Contract checks do not establish live gameplay success. The reflection check writes to a separate test notebook. Contract-call usage is recorded in `logs/player_contract_checks.jsonl`, separately from gameplay totals.
+
+### Sun accounting and journal consistency
+
+Board prompts include a mechanically calculated packet comparison: balance after each ready, affordable purchase and its effect on the sun shortfall for a queued paid packet. A zero-cost packet preserves both the balance and that shortfall. The comparison assumes no future income and keeps placement legality, supports, group costs, recharge, and queue order separate. It neither selects a target nor changes the queue. Night/fog boards also report observed awake income producers and sun drops.
+
+Planning, decisions, and reflection explicitly give current costs and game mechanics precedence over journal hypotheses. They distinguish sun spending from cell, recharge, support, and loadout-slot tradeoffs. A plant dying is not treated as a measurement of zero damage or zero time bought. Reflection receives the normal packet-cost catalog with observed costs overriding it, and stores that cost context in history for audit. Existing strategy lessons are not automatically rewritten or removed; the player must reassess them. These prompts and arithmetic have offline coverage in `test_sun_accounting.py`; no particular loadout or plant choice is enforced.
 
 ## Implementation and verification
 

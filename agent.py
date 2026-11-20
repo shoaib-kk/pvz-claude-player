@@ -15,7 +15,7 @@ How it works:
       - spots the end of the level (clicks the reward if won)
   * AI thread: whenever the plan runs out or something important happens
     (new zombie, plant lost, mower used), the board is sent to the brain.
-    Its new plan replaces the old one when the answer arrives.
+    The player chooses whether to keep, append, cancel IDs, or replace its queue.
   * Everything goes to logs/, and the AI's reasoning to overlay.txt
     (add it to OBS as a Text (GDI+) source with "Read from file").
 
@@ -36,13 +36,16 @@ import win32gui
 
 import offsets as O
 import plant_info
-from brains import action_text, describe, make_brain, x_to_col
+from brains import action_text, describe, make_brain, shot_behind_zombies, x_to_col
 from journal import Journal, LevelRecorder, situation_of
 from controller import Controller
+from execution import ExecutionTracker
+from queueing import edit_queue, units, check_unit
 
 ROOT = Path(__file__).parent
 TICK = 0.15                # main loop period (sun pickup, plan execution)
 MIN_GAP = 4.0              # never start a new AI request sooner than this after the last one
+THREAT_GAP = 10.0          # a threat change waits this long since the last request, unless a mower fired
 REJECTED_GAP = 8.0         # re-ask this soon when every action of the last plan was rejected
 MAX_GAP = 30.0             # check lower-priority changes after this much time
 FINAL_REWARDS = {7, 8, 9, 10, 11, 12, 13, 14, 15, 18}   # seed packet, note, trophy, money bag...
@@ -186,7 +189,9 @@ def decision_reason(current, previous, *, conveyor, queued, completed, since, fr
         return "first_board"
     old_threats, old_ready, _, _ = previous
     can_act = bool(ready) or vases
-    if can_act and important_change(old_threats, current_threats):
+    # Keep the ten-second throttle as a call-rate safety net. A new answer may keep the queue.
+    mower_fired = old_threats is not None and old_threats[2] != current_threats[2]
+    if can_act and important_change(old_threats, current_threats) and (since >= THREAT_GAP or mower_fired):
         return "threat_changed"
     new_cards = ready - old_ready
     if not queued and conveyor and new_cards:
@@ -197,15 +202,18 @@ def decision_reason(current, previous, *, conveyor, queued, completed, since, fr
     # see why and try again soon, instead of idling until the board changes.
     if not queued and rejected and since >= REJECTED_GAP:
         return "plan_rejected"
-    can_buy = any(cost > 0 for _, cost in ready) or (conveyor and bool(ready)) or vases
+    can_buy = bool(ready) or vases
     if not queued and completed and can_buy:
         return "plan_completed"
-    if not queued and any(cost > 0 for _, cost in new_cards):
+    if not queued and new_cards:
         return "card_available"
     if since >= MAX_GAP and retry:
         return "retry"
     if since >= MAX_GAP and can_buy and current != previous:
         return "board_changed"
+    idle_gap = MAX_GAP * min(4, 2 ** max(0, fruitless - 2))
+    if not queued and since >= idle_gap and any(cost == 0 for _, cost in ready):
+        return "idle_check"
     return None
 
 
@@ -250,6 +258,7 @@ class Agent:
         self.last_sun = None
         self.last_mowers = None
         self.level_finished = False
+        self.execution = None
 
     # --- small helpers -------------------------------------------------------
     def log(self, **entry):
@@ -489,10 +498,12 @@ class Agent:
             pass
         names, why, warned = seed_select.choose(self.ctl, self.brain, log=print)
         self.loadout = list(names)
+        self.pick_options = getattr(self.brain, "last_options", None)
         self.loadout_warning = warned
         plan = getattr(self.brain, "plan", None)
         self.show(f"Loadout: {', '.join(names)}. {why}" + (f"\n    Plan: {plan}" if plan else ""))
         self.log(kind="seed_pick", seeds=names, reasoning=why, warned=warned, plan=plan,
+                 options=getattr(self.brain, "last_options", None),
                  think_seconds=round(time.time() - t0, 1), **self.usage_fields())
 
     # --- during the level ----------------------------------------------------
@@ -579,32 +590,87 @@ class Agent:
         return state.get("in_level") and required <= state.keys()
 
     def work_queue(self):
-        """Carry out queued actions in order, each as soon as it's possible."""
+        """Execute only the ordering, independence, and groups chosen by the player."""
         while self.queue:
             state = self.snapshot()
             if not self.readable(state):
                 return
-            action = self.queue[0]
-            status, reason, seed = validate(action, state)
-            if status == "later":
+            selected = None
+            barrier = None
+            for unit in units(self.queue):
+                if barrier is not None and not unit[0].get("independent", False):
+                    if self.execution:
+                        for a in unit:
+                            self.execution.waiting(a, f"queue order after #{barrier}")
+                    continue
+                status, reason = check_unit(unit, state, validate)
+                if status == "later":
+                    if self.execution:
+                        for a in unit:
+                            self.execution.waiting(a, reason)
+                    if barrier is None:
+                        barrier = unit[0].get("id", "?")
+                else:
+                    selected = (unit, status, reason)
+                    break
+            if selected is None:
+                if self.execution:
+                    self.execution.sample(True, state["sun"])
                 return
-            self.queue.pop(0)
-            desc = json.dumps({k: v for k, v in action.items() if v is not None})
-            if status == "reject":
-                self.rejected_since_ask = getattr(self, "rejected_since_ask", 0) + 1
-                result = f"SKIPPED {desc}: {reason}"
-            else:
-                ok = self.perform(action, seed, state)
-                self.planted_since_ask += ok
-                result = f"{'OK' if ok else 'FAILED (click did not register)'} {desc}"
-            print("    " + result)
-            feedback = f"{result.split(' ', 1)[0]} {action_text(action)}"
-            if status == "reject":
-                feedback += f": {reason}"
-            elif not ok:
-                feedback += ": click did not register"
-            self.recent = (self.recent + [feedback])[-20:]
-            self.log(kind="action", action=action, result=result)
+            unit, status, reason = selected
+            if self.execution:
+                self.execution.sample(False, state["sun"])
+            group_failed = status == "reject"
+            for action in unit:
+                self.queue.remove(action)
+                if group_failed:
+                    self.record_action(action, "reject", reason, None, state)
+                    continue
+                live = self.snapshot()
+                if not self.readable(live):
+                    group_failed, reason = True, "board became unreadable during group"
+                    self.record_action(action, "reject", reason, None, state)
+                    continue
+                current, reason, seed = validate(action, live)
+                if current != "ok":
+                    group_failed = True
+                    self.record_action(action, "reject", f"group interrupted: {reason}", seed, live)
+                    continue
+                if not self.record_action(action, current, reason, seed, live):
+                    group_failed, reason = True, "earlier group step failed"
+        if self.execution:
+            self.execution.sample(False, 0)
+
+    def record_action(self, action, status, reason, seed, state):
+        """Perform one validated move, then record its real outcome and feedback."""
+        desc = json.dumps({k: v for k, v in action.items() if v is not None and not k.startswith("_")})
+        ok = False
+        if status == "reject":
+            self.rejected_since_ask = getattr(self, "rejected_since_ask", 0) + 1
+            result = f"SKIPPED {desc}: {reason}"
+            if self.execution:
+                self.execution.finish(action, "rejected", reason)
+        else:
+            ok = self.perform(action, seed, state)
+            self.planted_since_ask += ok
+            result = f"{'OK' if ok else 'FAILED (click did not register)'} {desc}"
+            if self.execution:
+                self.execution.finish(action, "completed" if ok else "failed", "" if ok else "click did not register")
+                self.execution.sample(False, state["sun"])
+            if ok and action["type"] == "plant" and shot_behind_zombies(
+                    state, action["row"], action["col"], seed["name"]):
+                r, c = action["row"], action["col"]
+                self.event(f"your {seed['name']} at row {r} col {c} was planted behind every zombie "
+                           f"in row {r}; its shots go toward the street, so it can't hit them")
+        print("    " + result)
+        feedback = f"{result.split(' ', 1)[0]} {action_text(action)}"
+        if status == "reject":
+            feedback += f": {reason}"
+        elif not ok:
+            feedback += ": click did not register"
+        self.recent = (self.recent + [feedback])[-20:]
+        self.log(kind="action", action=action, result=result)
+        return ok
 
     def click_reward(self, state):
         for award in state.get("awards", []):
@@ -615,6 +681,8 @@ class Agent:
                     # The game then cashes in every unused mower (they all drive off).
                     # That isn't a mower saving a row, so stop recording from here on.
                     self.level_finished = True
+                    if self.execution:
+                        self.execution.sample(False, 0)
                 return True
         return False
 
@@ -648,10 +716,15 @@ class Agent:
             return
         board_text = describe(recorder.last, []) if recorder.last else None
         report = recorder.report(board_text, outcome)
+        if self.execution:
+            report += "\n\n" + self.execution.report()
+        report += "\n[b0] The final board above is the last observed board, not necessarily the exact loss instant."
         t0 = time.time()
         try:
             summary = journal.reflect(self.brain, label, outcome, report, situation,
-                                      getattr(self.brain, "plan", None))
+                                      getattr(self.brain, "plan", None),
+                                      attempt=self.execution.attempt if self.execution else None,
+                                      evidence=self.reflection_evidence(), facts=self.attempt_facts())
         except Exception as e:  # noqa: BLE001 - the journal must never stop a run
             self.log(kind="journal_error", level=label, error=str(e))
             return
@@ -660,7 +733,28 @@ class Agent:
         lessons = "".join("\n    - " + x for x in journal.lessons)
         self.show(f"Journal after {label} ({outcome}): {summary}{lessons}")
         self.log(kind="journal", level=label, outcome=outcome, summary=summary, lessons=journal.lessons,
-                 report=report, think_seconds=round(time.time() - t0, 1), **self.usage_fields())
+                 report=report, plan_assessment=journal.data["history"][-1].get("plan_assessment"),
+                 think_seconds=round(time.time() - t0, 1), **self.usage_fields())
+
+    def attempt_facts(self):
+        """Comparable numbers for this attempt, for the journal's earlier-attempts table."""
+        facts = self.recorder.facts() if getattr(self, "recorder", None) else None
+        if facts and self.execution:
+            m = self.execution.metrics()
+            facts["plants_placed"] = sum(m.get("planted", {}).values()) or facts["plants_placed"]
+            facts["stalled_unspent_sun_seconds"] = m.get("queue_stalled_unspent_sun_seconds")
+        return facts
+
+    def reflection_evidence(self):
+        """Only recorded facts, never operator conclusions about the player's choices."""
+        evidence = {}
+        if self.execution:
+            evidence.update({e["event_id"]: e for e in self.execution.events})
+            evidence["s0"] = self.execution.metrics()
+        if self.recorder:
+            evidence.update({f"t{i}": event for i, event in enumerate(self.recorder.events, 1)})
+            evidence["b0"] = self.recorder.last
+        return evidence
 
     def capture_result(self, level, outcome):
         stamp = datetime.now().strftime("%H-%M-%S-%f")
@@ -682,14 +776,26 @@ class Agent:
         decision["_think"] = round(time.time() - t0, 2)
         decision["_state"] = state
         decision["_trigger"] = trigger
+        decision["_queue_ids"] = [a["id"] for a in queue if "id" in a]
         decision["_usage"] = self.usage_fields()
         return decision
 
     def apply_decision(self, decision):
         self.decisions += 1
         if not decision.get("_error"):
-            self.queue = [a for a in decision.get("actions", []) if a.get("type") in ACTION_TYPES][:MAX_ACTIONS]
-            self.had_plan = bool(self.queue)
+            if self.execution is None:
+                self.execution = ExecutionTracker("offline", self.log)
+            self.queue = [a if a.get("id") in self.execution.actions else self.execution.issue(a, 0)
+                          for a in self.queue]
+            try:
+                live = self.snapshot() if decision.get("_queue_ids") else decision["_state"]
+                self.queue = edit_queue(self.queue, decision, self.execution, self.decisions, live)
+                if decision.get("edit") != "keep":
+                    self.had_plan = bool(self.queue)
+            except (ValueError, TypeError, KeyError) as error:
+                decision["_error"] = True
+                self.event(f"queue edit rejected; your queue was kept: {error}")
+                self.execution.event("queue_edit_rejected", decision=self.decisions, reason=str(error))
         plan = ", ".join(f"{a.get('seed', a['type'])}@{a.get('row')},{a.get('col')}"
                          for a in self.queue) or "nothing for now"
         self.show(f"[{self.decisions}] ({decision['_think']}s) {decision.get('reasoning', '')}\n"
@@ -701,6 +807,7 @@ class Agent:
                  **decision["_usage"])
 
     def play(self):
+        outcome = "stopped"
         previous_context, last_ask_t = None, 0.0
         last_reward_click = 0.0
         awaiting_result = False
@@ -754,7 +861,8 @@ class Agent:
                         unreadable_since = time.monotonic()
                     if time.monotonic() - unreadable_since >= 15:
                         self.log(kind="level_end", level=level, outcome="read_error", errors=state.get("errors"))
-                        return "read_error"
+                        outcome = "read_error"
+                        return outcome
                     time.sleep(TICK)
                     continue
                 unreadable_since = None
@@ -778,13 +886,15 @@ class Agent:
 
                 if pending is not None and pending.done():
                     decision = pending.result()
-                    brain_errors = brain_errors + 1 if decision.get("_error") else 0
                     self.apply_decision(decision)
+                    brain_errors = brain_errors + 1 if decision.get("_error") else 0
                     pending = None
                     if brain_errors >= 3:
-                        return "brain_error"
+                        outcome = "brain_error"
+                        return outcome
                     if self.max_decisions and self.decisions >= self.max_decisions:
-                        return "max_decisions"
+                        outcome = "max_decisions"
+                        return outcome
 
                 self.work_queue()
 
@@ -808,6 +918,8 @@ class Agent:
                             fruitless = fruitless + 1 if self.planted_since_ask == 0 else 0
                         self.planted_since_ask = 0
                         self.rejected_since_ask = 0
+                        if self.execution:
+                            state["execution"] = self.execution.compact()
                         pending = pool.submit(self.ask_brain, state, list(self.recent), list(self.queue), trigger)
                         previous_context, last_ask_t = context, now
 
@@ -816,6 +928,9 @@ class Agent:
             interrupted = True
             raise
         finally:
+            # Freeze waits before waiting for an in-flight reply after the level ends.
+            if self.execution:
+                self.execution.end(self.queue, outcome)
             # A completed level can have an in-flight decision. Keep it from
             # racing the next level's chooser for the same player's usage.
             pool.shutdown(wait=not interrupted, cancel_futures=True)
@@ -827,7 +942,7 @@ class Agent:
     def play_levels(self):
         wins = 0
         last_win = None
-        retry = False
+        retry = getattr(self, "restart", False)   # --restart may start on the Game Over screen
         retries_left = self.retries
         while wins < self.levels:
             journal = getattr(self, "journal", None)
@@ -866,12 +981,18 @@ class Agent:
                 reset_brain = getattr(self.brain, "reset", None)
                 if reset_brain and info.get("special") != "whack":
                     reset_brain()  # fresh conversation per level, with this level's journal and plan
-            self.recorder = LevelRecorder(label, getattr(self, "loadout", []))
+            self.recorder = LevelRecorder(label, getattr(self, "loadout", []),
+                                          getattr(self, "pick_options", None))
+            self.attempt_number = getattr(self, "attempt_number", 0) + 1
+            self.execution = ExecutionTracker(
+                f"{getattr(self, 'log_path', Path('test')).stem}:attempt{self.attempt_number}", self.log)
+            self.pick_options = None         # only valid for the attempt whose chooser offered them
             if getattr(self, "loadout_warning", False):
                 self.recorder.events.append("before the level: the game warned that your loadout "
                                             "had no sun-producing plant; you started anyway")
                 self.loadout_warning = False
             result = self.play()
+            self.execution.end(self.queue, result)
             # Whack-a-Zombie is played by the script (mallet clicks), not by the player,
             # so there is nothing for the player to reflect on.
             if result in ("won", "lost") and info.get("special") != "whack":
@@ -895,7 +1016,15 @@ class Agent:
 
     def run(self):
         self.show(f"AI ({self.brain.name}) is taking over. Ctrl+C to stop.")
-        self.log(kind="start", brain=self.brain.name, version=self.reader.version)
+        import hashlib
+        code_hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                       for p in ROOT.glob("*.py")}
+        self.log(kind="start", brain=self.brain.name, version=self.reader.version,
+                 model=getattr(self.brain, "model", None), effort=getattr(self.brain, "effort", None),
+                 plan_effort=getattr(self.brain, "plan_effort", None), code_sha256=code_hashes,
+                 journal_sha256=(hashlib.sha256(self.journal.path.read_bytes()).hexdigest()
+                                 if self.journal and self.journal.path.exists() else None),
+                 architecture="player-queue-learning-v2")
         outcome, wins = "stopped", 0
         try:
             self.ctl.wake()
@@ -919,6 +1048,8 @@ class Agent:
         except pyautogui.FailSafeException:
             self.show("Stopped: mouse hit a screen corner (fail-safe).")
         finally:
+            if self.execution:
+                self.execution.end(self.queue, outcome)
             self.log(kind="stop", outcome=outcome, decisions=self.decisions, wins=wins)
             print(f"Log: {self.log_path}")
 

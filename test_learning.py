@@ -31,6 +31,59 @@ class PromptTests(unittest.TestCase):
         self.assertNotIn("DANGER", out)
         self.assertIn("row 0: 0 attackers", out)
 
+    def test_chooser_knows_mushrooms_are_awake_in_fog(self):
+        self.assertIn("Night and fog levels take place at night: there is no\nfalling sun and mushrooms are awake",
+                      brains.PICK_SYSTEM)
+
+    def test_pick_remembers_the_options_offered(self):
+        brain = brains.Notes()
+        brain.ask = lambda *a, **k: {"seeds": ["sun_shroom"], "plan": "p", "reasoning": "r"}
+        brain.pick_seeds([{"name": "sun_shroom", "cost": 25}, {"name": "puff_shroom", "cost": 0}], 1, {})
+        self.assertEqual(brain.last_options, ["sun_shroom", "puff_shroom"])
+
+    def test_shooting_direction_is_a_stated_rule(self):
+        self.assertIn("fire toward the street (higher columns) only", brains.SYSTEM_PROMPT)
+
+    def test_row_summary_counts_attackers_that_can_reach_the_closest_zombie(self):
+        s = board()
+        plant(s, "peashooter", 4, 1)
+        plant(s, "peashooter", 4, 7)            # behind the zombie at col 4
+        s["zombies"] = [{"type": "conehead", "row": 4, "x": 380, "hp": 270, "armor_hp": 370}]
+        out = brains.describe(s, [], compact=True)
+        self.assertIn("row 4: 2 attackers (1 can hit the closest zombie)", out)
+
+    def test_zombies_are_drawn_in_the_lawn_grid(self):
+        s = board()
+        s["zombies"] = [{"type": "conehead", "row": 4, "x": 380, "hp": 270, "armor_hp": 370},
+                        {"type": "zombie", "row": 0, "x": 760, "hp": 270, "armor_hp": 0}]
+        out = brains.describe(s, [], compact=True)
+        self.assertIn("row 4 M: .|.|.|.|. Z:conehead|.|.|.|.", out)
+        self.assertIn("row 0 M: .|.|.|.|.|.|.|.|.  >> zombie", out)
+
+    def test_shot_behind_zombies(self):
+        s = board()
+        s["zombies"] = [{"type": "zombie", "row": 2, "x": 300, "hp": 270, "armor_hp": 0}]  # col 3
+        self.assertTrue(brains.shot_behind_zombies(s, 2, 6, "peashooter"))
+        self.assertFalse(brains.shot_behind_zombies(s, 2, 3, "peashooter"))   # same tile still hits
+        self.assertFalse(brains.shot_behind_zombies(s, 2, 1, "peashooter"))
+        self.assertFalse(brains.shot_behind_zombies(s, 2, 6, "split_pea"))    # shoots backward too
+        self.assertFalse(brains.shot_behind_zombies(s, 2, 6, "wall_nut"))
+        self.assertFalse(brains.shot_behind_zombies(s, 1, 6, "peashooter"))   # no zombie in row
+
+    def test_agent_reports_a_shooter_planted_behind_the_zombies(self):
+        from unittest.mock import patch
+        from test_campaign import action, operator
+        op = operator()
+        s = board()
+        seed(s, "peashooter")
+        s["zombies"] = [{"type": "zombie", "row": 2, "x": 300, "hp": 270, "armor_hp": 0}]
+        op.queue = [action("peashooter", 2, 6)]
+        op.recent = []
+        op.planted_since_ask = 0
+        with patch.object(op, "snapshot", return_value=s), patch.object(op, "perform", return_value=True):
+            op.work_queue()
+        self.assertTrue(any("planted behind every zombie in row 2" in r for r in op.recent))
+
     def test_plant_knowledge_is_staged_by_almanac_unlock(self):
         s = board(terrain="night")
         seed(s, "puff_shroom")
@@ -99,6 +152,68 @@ class JournalTests(unittest.TestCase):
             md = (again.folder / "lessons.md").read_text(encoding="utf-8")
             self.assertIn("**1-7** (lost", md)
             self.assertIn("**1-7** (won", md)
+
+    def test_lost_plants_show_their_sun_cost_and_placements_are_counted(self):
+        def board(plants, seeds):
+            return {"in_level": True, "wave": [3, 10], "zombies": [], "mowers": [1] * 6,
+                    "seeds": [{"name": n, "cost": c} for n, c in seeds],
+                    "plants": [{"row": r, "col": c, "type": t} for r, c, t in plants]}
+        seeds = [("puff_shroom", 0), ("fume_shroom", 75)]
+        rec = LevelRecorder("4-1", ["puff_shroom", "fume_shroom"])
+        rec.observe(board([(0, 3, "puff_shroom"), (1, 2, "fume_shroom")], seeds))
+        rec.observe(board([(1, 2, "fume_shroom")], seeds))
+        rec.observe(board([(0, 3, "puff_shroom"), (1, 2, "fume_shroom")], seeds))
+        report = rec.report()
+        self.assertIn("puff_shroom x1 (0 sun each)", report)
+        self.assertIn("Sun value of plants destroyed: 0", report)
+        self.assertEqual(rec.facts()["plants_placed"], 3)
+        self.assertEqual(rec.facts()["wave"], [3, 10])
+
+    def test_reflection_sees_earlier_attempts_at_the_same_level(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            j = Journal(tmp)
+            brain = FakeBrain(["l"])
+            j.reflect(brain, "4-1", "lost", "r", facts={"loadout": ["puff_shroom"], "wave": [10, 10],
+                                                        "plants_placed": 39, "sun_lost": 0})
+            j.reflect(brain, "3-1", "won", "r", facts={"loadout": ["peashooter"], "wave": [10, 10]})
+            j.reflect(brain, "4-1", "lost", "r")
+            self.assertNotIn("earlier attempts", brain.prompts[0])
+            self.assertIn("lost at wave 10 of 10; loadout puff_shroom; plants placed 39; "
+                          "sun value of plants destroyed 0", brain.prompts[2])
+            self.assertNotIn("loadout peashooter", brain.prompts[2])
+
+    def test_report_lists_plants_left_out_of_the_loadout(self):
+        rec = LevelRecorder("4-1", ["sun_shroom", "lily_pad"], ["sun_shroom", "sea_shroom", "lily_pad", "tangle_kelp"])
+        report = rec.report()
+        self.assertIn("Plants you could have brought but didn't: sea_shroom, tangle_kelp", report)
+        self.assertNotIn("could have brought", LevelRecorder("4-1", ["sun_shroom"]).report())
+
+    def test_water_plants_say_they_need_no_lily_pad(self):
+        self.assertIn("no Lily Pad needed", plant_info.describe_plants(["sea_shroom"], 31)[0])
+        self.assertIn("Aquatic plants (lily_pad, sea_shroom, tangle_kelp...)\ngo directly on water",
+                      brains.PICK_SYSTEM)
+
+    def test_fog_section_starts_from_the_night_lessons_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            j = Journal(tmp)
+            j.data["sections"] = {"night": ["sun_shrooms first"], "fog": ["old fog lesson"]}
+            block = j.prompt_block("fog")
+            self.assertIn("For fog levels:\n- sun_shrooms first\n- old fog lesson", block)
+            j.data["sections"]["fog"] = ["learned in fog"]       # later reflections own the section
+            j.save()
+            again = Journal(tmp)
+            self.assertIn("- learned in fog", again.prompt_block("fog"))
+            self.assertNotIn("sun_shrooms first", again.prompt_block("fog"))
+            self.assertEqual(again.data["seeded"], ["fog"])
+            self.assertNotIn("sun_shrooms", again.prompt_block("pool"))
+
+    def test_fog_section_waits_for_a_night_section(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            j = Journal(tmp)
+            j.prompt_block("fog")
+            self.assertNotIn("fog", j.data.get("seeded", []))   # nothing to copy yet; try again later
+            j.data["sections"]["night"] = ["sun_shrooms first"]
+            self.assertIn("sun_shrooms first", j.prompt_block("fog"))
 
     def test_brain_without_ask_is_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -327,10 +442,42 @@ class DecisionSchedulingTests(unittest.TestCase):
         state = board()
         seed(state, "puff_shroom", cost=0)
         previous = decision_context(state)
-        options = dict(conveyor=False, queued=False, completed=False, since=8, fruitless=3)
+        options = dict(conveyor=False, queued=False, completed=False, since=10, fruitless=3)
         self.assertIsNone(decision_reason(previous, previous, **options))
         state["zombies"] = [{"type": "conehead", "row": 0, "x": 190, "hp": 270, "armor_hp": 200}]
         self.assertEqual(decision_reason(decision_context(state), previous, **options), "threat_changed")
+
+    def test_threat_changes_wait_ten_seconds_but_a_fired_mower_does_not(self):
+        from agent import decision_context, decision_reason
+
+        state = board()
+        seed(state, "puff_shroom", cost=0)
+        previous = decision_context(state)
+        options = dict(conveyor=False, queued=True, completed=False, fruitless=0)
+        state["zombies"] = [{"type": "zombie", "row": 1, "x": 500, "hp": 270, "armor_hp": 0}]
+        now = decision_context(state)
+        self.assertIsNone(decision_reason(now, previous, since=6, **options))
+        self.assertEqual(decision_reason(now, previous, since=10, **options), "threat_changed")
+        state["mowers"][1] = False
+        self.assertEqual(decision_reason(decision_context(state), previous, since=5, **options), "threat_changed")
+
+    def test_only_player_grouping_pairs_a_lily_pad_and_plant(self):
+        from agent import validate
+        from queueing import check_unit
+
+        state = board("pool")
+        seed(state, "lily_pad", cost=25)
+        fume = seed(state, "fume_shroom", cost=75)
+        queue = [{"type": "plant", "seed": "lily_pad", "row": 2, "col": 1},
+                 {"type": "plant", "seed": "fume_shroom", "row": 2, "col": 1}]
+        state["sun"] = 50
+        self.assertEqual(check_unit(queue, state, validate)[0], "later")
+        self.assertEqual(check_unit(queue[:1], state, validate)[0], "ok")  # no inferred pair
+        state["sun"] = 100
+        self.assertEqual(check_unit(queue, state, validate)[0], "ok")
+        fume["ready"] = False
+        self.assertEqual(check_unit(queue, state, validate)[0], "later")
+        self.assertEqual(check_unit(queue[:1], state, validate)[0], "ok")
 
     def test_new_copy_of_a_conveyor_card_is_a_change(self):
         from agent import decision_context, decision_reason
