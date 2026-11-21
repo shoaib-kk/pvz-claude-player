@@ -1,5 +1,6 @@
 """Player-controlled queue edits and grouping, with no plant or target selection."""
 import copy
+from action_contract import check_action
 from execution import action_key, clean_action
 
 
@@ -27,6 +28,7 @@ def edit_queue(queue, decision, tracker, number, live_state=None):
     # from plant names or from two actions happening to share a target.
     closed, previous, policies = set(), None, {}
     for a in incoming:
+        check_action(a)
         if not isinstance(a, dict) or a.get("type") not in ("plant", "shovel", "break_vase"):
             raise ValueError("unknown action")
         g = a.get("group", 0)

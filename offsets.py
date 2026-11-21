@@ -105,7 +105,11 @@ CO_DEAD = 0x38           # bool
 CO_COLLECTED = 0x50      # bool, already clicked and flying to the bank
 CO_TYPE = 0x58           # int: 1 silver, 2 gold, 3 diamond, 4 sun, 5 small sun, 6 big sun
 CO_SEED = 0x68           # seed type carried by a temporary seed packet
+CO_AGE = 0x4C            # elapsed game ticks (100 ticks ~= 1 second)
+CO_DISAPPEAR = 0x54      # ticks spent on the ground before fading
+CO_FADE = 0x3C
 USABLE_SEED_PACKET = 16
+VASE_PACKET_LIFETIME = 1500  # Coin::GetDisappearTime; estimate at normal game speed
 SUN_TYPES = {4: 25, 5: 15, 6: 50}
 MONEY_TYPES = {1, 2, 3}
 # 7 final seed packet, 8 trophy, 9 shovel, 10 almanac, 11 car keys, 12 vase, 13 watering can,
@@ -123,6 +127,9 @@ GRID_ITEM_ARRAY = 0x11C
 GRID_ITEM_MAX = 0x120
 GRID_ITEM_SIZE = 0xEC
 GI_TYPE, GI_COL, GI_ROW, GI_DEAD = 0x08, 0x10, 0x14, 0x20
+GI_STATE = 0x0C          # visible vase sprite; plain=3 verified live on GOTY 2026-11-20
+# Appearance enums follow ConstEnums.h; concealed content fields 0x3C-0x44 are never decoded.
+VASE_APPEARANCES = {3: "plain", 4: "plant", 5: "zombie"}
 GRID_ITEMS = {1: "grave", 2: "crater", 7: "vase"}
 
 # Board flags (PAUSED, WAVE_* are per-version, above)

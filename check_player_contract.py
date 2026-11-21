@@ -9,6 +9,14 @@ from pathlib import Path
 
 
 def validate_schema(value, schema):
+    if "anyOf" in schema:
+        for branch in schema["anyOf"]:
+            try:
+                validate_schema(value, branch)
+                return
+            except ValueError:
+                pass
+        raise ValueError("value does not match any action variant")
     types = {"object": dict, "array": list, "string": str, "integer": int, "boolean": bool}
     if "type" in schema and type(value) is not types[schema["type"]]:
         raise ValueError(f"expected {schema['type']}")
@@ -30,6 +38,8 @@ def validate_schema(value, schema):
             validate_schema(item, schema.get("items", {}))
     elif type(value) is int and value < schema.get("minimum", value):
         raise ValueError("integer below minimum")
+    elif type(value) is int and value > schema.get("maximum", value):
+        raise ValueError("integer above maximum")
 
 
 def main():

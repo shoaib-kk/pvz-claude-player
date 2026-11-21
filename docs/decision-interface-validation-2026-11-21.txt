@@ -1,0 +1,90 @@
+Decision interface and accounting changes - 21 November 2026
+
+Implemented
+===========
+- Moved placement rules into placement.py; the executor and legal-cell report
+  use the same validator. It enumerates unranked legal single-step targets,
+  without adding supports, choosing plants, or claiming firing reach.
+- Identical legal-cell masks share one list. Funding and recharge remain in the
+  seed table, rather than being repeated for each list.
+- Plant actions require exact packet names and integer coordinates. The JSON
+  schema distinguishes plant, shovel and break_vase; model decisions constrain
+  names to the relevant packets where the loadout is fixed. Local queue edits
+  reject malformed shapes before altering a valid pending queue.
+- Added observation timestamps and clarified that legal cells can change during
+  a player call. Existing live placement validation remains authoritative.
+- Added a purchase ledger: confirmed packet spending, initial plants supplied
+  at takeover, unattributed later plants, replacement value of missing plants,
+  and spending on purchased plants later missing are separate measurements.
+  One-use disappearance and intentional shovel/upgrade removal are not counted
+  as destroyed investment. Shovel layers use the actual confirmation snapshot.
+- Selection/planning now show the furthest recorded same-level result and the
+  latest two attempts, including loadouts and completed planting counts. Unknown
+  historical starting-cleaner counts are labeled unknown, not assumed equal.
+- The player can choose up to three measurable planting objectives, optionally
+  specifying coordinates and a wave deadline. Subsequent boards show confirmed
+  completions, currently present counts and deadline status. Completion timing
+  uses the confirmation snapshot. Objectives never schedule or choose moves.
+- Reflection receives tagged accounting and objective evidence. Historical
+  sun_lost fields are presented as replacement value, not cash spending. No
+  existing player lessons or historical run records were rewritten.
+
+Validation
+==========
+.venv\Scripts\python.exe -m unittest discover -q
+134 tests passed, including recorded emergency-board tests, water/support and
+special-level legality, malformed-action queue preservation, free starting pots,
+paid replacements, unknown costs, shovel layers, objective deadlines, historical
+comparisons and replay queue reconstruction.
+
+The free-pot regression has 20 initial pots, 20 purchases for 500 sun, and
+35 disappeared pots. It correctly reports 875 sun replacement value and only
+375 sun spent on the purchased subset that disappeared. Remaining purchases
+account for the other 125 sun; none of the initial pots is charged as spending.
+
+Read-only observations were regenerated for decisions 84, 107 and 108 of:
+logs/run_2026-11-21_11-42-51_subscription.jsonl
+Output: logs/world5_interface_replay_observations.json
+
+The first optional player replay exposed a replay reconstruction bug: queued
+events for the decision being replayed occur before its decision log entry.
+Those events must not enter the input queue. The replay now reads the queue
+from the original observed prompt, with a regression preventing future leakage.
+The initial player replay artifact is explicitly marked superseded for cases
+84 and 107; do not use it as an effectiveness measurement.
+
+A fresh Haiku/low replay of decision 108 with the final compact prompt returned
+a cabbage_pult at (0,0). That action passes the existing board validator. The
+original decision returned no action and claimed there was no response.
+Output: logs/world5_interface_replay_final_haiku_low.json
+This is one offline sample showing a recognized legal response, not proof of a
+win or a reliable improvement in overall playing strength. The replay never
+attaches to, screenshots, or controls the game; no live level was restarted.
+
+Prompt-size check
+=================
+Same recorded boards and recent feedback, with the final shared legal masks:
+Decision 84: previous 3760 characters; new 4113 (+353).
+Decision 107: previous 3345 characters; new 3700 (+355).
+Decision 108: previous 3008 characters; new 3367 (+359).
+These are character counts for board text, not token counts or total request
+usage. Fixed action-schema/history context and optional objective progress add
+separate overhead. Accounting detail is sent for reflection, not every move.
+
+Commands
+========
+Observations only, no player usage or input:
+.venv\Scripts\python.exe replay_decisions.py logs\run_2026-11-21_11-42-51_subscription.jsonl --decisions 84 107 108 --output logs\replay.json
+
+Optional one Haiku/low player call on the critical recorded board, no input:
+.venv\Scripts\python.exe replay_decisions.py logs\run_2026-11-21_11-42-51_subscription.jsonl --decisions 108 --player --output logs\replay_player.json
+
+Limits
+======
+Plant provenance follows observed cell/type lifetimes and confirmed actions;
+unseen replacements are not decoded from hidden game fields. The ledger marks
+unknown provenance/cost rather than inventing purchases. A disappeared plant's
+damage contribution and removal cause remain unknown without further evidence.
+No strategy, layout or automatic emergency choice was introduced. The changes
+have offline coverage and one final player replay; no new live-game validation
+has been performed for this implementation.

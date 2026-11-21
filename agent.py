@@ -36,10 +36,12 @@ import win32gui
 
 import offsets as O
 import plant_info
+import vasebreaker
 from brains import action_text, describe, make_brain, shot_behind_zombies, x_to_col
 from journal import Journal, LevelRecorder, situation_of
 from controller import Controller
 from execution import ExecutionTracker
+from emergency_stop import StopHotkey
 from queueing import edit_queue, units, check_unit
 
 ROOT = Path(__file__).parent
@@ -50,101 +52,8 @@ REJECTED_GAP = 8.0         # re-ask this soon when every action of the last plan
 MAX_GAP = 30.0             # check lower-priority changes after this much time
 FINAL_REWARDS = {7, 8, 9, 10, 11, 12, 13, 14, 15, 18}   # seed packet, note, trophy, money bag...
 MAX_ACTIONS = 5            # length of the AI's build queue
-UPGRADES = {"gatling_pea": "repeater", "twin_sunflower": "sunflower", "gloom_shroom": "fume_shroom",
-            "cattail": "lily_pad", "winter_melon": "melon_pult", "gold_magnet": "magnet_shroom",
-            "spikerock": "spikeweed", "cob_cannon": "kernel_pult"}
-AQUATIC = {"lily_pad", "sea_shroom", "tangle_kelp"}
-SUPPORTS = {"lily_pad", "flower_pot"}
-BOWLING_SEEDS = {"wall_nut", "explode_o_nut", "giant_wall_nut"}
-ACTION_TYPES = {"plant", "shovel", "break_vase"}
-
-
-# ---------------------------------------------------------------------------
-# Validation: never let the AI click something illegal
-# ---------------------------------------------------------------------------
-
-def validate(action, state):
-    """Check one action against the live board.
-    Returns (status, reason, seed) where status is
-      "ok"     - do it now
-      "later"  - legal, but wait for sun / the seed to recharge
-      "reject" - can never work as written"""
-    kind = action.get("type")
-    row, col = action.get("row"), action.get("col")
-    if not isinstance(row, int) or not isinstance(col, int):
-        return "reject", "row and col are required", None
-    if not (0 <= row < len(state["grid"]) and 0 <= col < O.COLS):
-        return "reject", f"cell ({row},{col}) is off the lawn", None
-    occupant = state["grid"][row][col]
-    plants = {p["type"]: p for p in state["plants"] if (p["row"], p["col"]) == (row, col)}
-    cells = state.get("cells")
-    cell = cells[row][col] if cells else O.CELL_GRASS
-    items = {i["type"] for i in state.get("items", []) if (i["row"], i["col"]) == (row, col)}
-    special = state.get("special")
-
-    if kind == "break_vase":
-        if special == "vases" and "vase" in items:
-            return "ok", "ok", None
-        return "reject", "no vase at that cell", None
-
-    if kind == "shovel":
-        if not plants and occupant is None:
-            return "reject", f"nothing to shovel at ({row},{col})", None
-        return "ok", "ok", None
-
-    if kind == "plant":
-        name = (action.get("seed") or "").strip().lower().replace(" ", "_").replace("-", "_")
-        matches = [s for s in state["seeds"] if s["name"] == name]
-        seed = next((s for s in matches if s["ready"]), matches[0] if matches else None)
-        if seed is None:
-            have = ", ".join(s["name"] for s in state["seeds"])
-            return "reject", f"you don't have {name!r} (you have: {have})", None
-        if special == "bowling":
-            if col > 2 or name not in BOWLING_SEEDS:
-                return "reject", "roll a nut from columns 0 through 2", None
-        elif special == "boss" and col >= 8:
-            return "reject", "the last roof column is reserved for Zomboss", None
-        elif name == "coffee_bean":
-            if not any(p.get("asleep") for p in plants.values()) or name in plants:
-                return "reject", "Coffee Bean needs a sleeping mushroom", None
-        elif name == "grave_buster":
-            if "grave" not in items or occupant is not None:
-                return "reject", "Grave Buster needs an uncovered grave", None
-        elif cell in (0, O.CELL_DIRT) or items & {"grave", "crater", "vase", "ice"}:
-            return "reject", "the cell is blocked", None
-        elif name in AQUATIC:
-            if cell != O.CELL_POOL or occupant is not None or plants.keys() & SUPPORTS:
-                return "reject", f"{name} needs open water", None
-        elif name == "flower_pot":
-            if cell == O.CELL_POOL or plants or occupant is not None:
-                return "reject", "Flower Pot needs an empty dry cell", None
-        elif cell == O.CELL_POOL and "lily_pad" not in plants and name != "cattail" and not (
-            name == "pumpkin" and occupant == "cattail"
-        ):
-            return "reject", (f"({row},{col}) is water: plant lily_pad at ({row},{col}) first, "
-                              f"then {name} at ({row},{col}) once the pad is there"), None
-        elif state.get("terrain") in ("roof", "boss") and "flower_pot" not in plants:
-            return "reject", "plant a Flower Pot here first", None
-        elif name in {"spikeweed", "spikerock", "potato_mine"} and plants.keys() & SUPPORTS:
-            return "reject", f"{name} can't go on a Lily Pad or Flower Pot; it needs solid ground", None
-        elif name == "pumpkin":
-            if "pumpkin" in plants or occupant == "cob_cannon":
-                return "reject", f"cannot cover ({row},{col}) with a pumpkin", None
-        elif name in UPGRADES:
-            if occupant != UPGRADES[name] and UPGRADES[name] not in plants:
-                return "reject", f"{name} must go on top of a {UPGRADES[name]}", None
-            if name == "cattail" and occupant is not None:
-                return "reject", "Cattail needs a Lily Pad with no plant on top", None
-            if name == "cob_cannon" and (col + 1 >= O.COLS or state["grid"][row][col + 1] != "kernel_pult"):
-                return "reject", "cob_cannon needs two kernel_pults side by side (it goes on the left one)", None
-        elif occupant is not None:
-            return "reject", f"({row},{col}) already has a {occupant}", None
-        if not seed["ready"]:
-            return "later", f"{name} is recharging", seed
-        if seed["cost"] is not None and seed["cost"] > state["sun"]:
-            return "later", f"saving up for {name} ({seed['cost']} sun)", seed
-        return "ok", "ok", seed
-    return "reject", f"unknown action type {kind!r}", None
+# Re-export for existing callers and offline audits.
+from placement import validate, UPGRADES, AQUATIC, SUPPORTS, BOWLING_SEEDS, ACTION_TYPES
 
 
 # ---------------------------------------------------------------------------
@@ -181,12 +90,21 @@ def important_change(old, new):
 
 
 def decision_reason(current, previous, *, conveyor, queued, completed, since, fruitless, retry=False,
-                    rejected=False):
+                    rejected=False, vase_observation=None, previous_vase_observation=None):
     current_threats, ready, _, vases = current
     if since < MIN_GAP:
         return None
     if previous is None:
         return "first_board"
+    if vase_observation is not None and previous_vase_observation is not None:
+        positions, packets, expiring = vase_observation
+        old_positions, old_packets, old_expiring = previous_vase_observation
+        if positions - old_positions:
+            return "vase_arrangement_changed"
+        if positions != old_positions or packets != old_packets:
+            return "vase_revealed"
+        if expiring - old_expiring:
+            return "packet_expiring"
     old_threats, old_ready, _, _ = previous
     can_act = bool(ready) or vases
     # Keep the ten-second throttle as a call-rate safety net. A new answer may keep the queue.
@@ -211,6 +129,10 @@ def decision_reason(current, previous, *, conveyor, queued, completed, since, fr
         return "retry"
     if since >= MAX_GAP and can_buy and current != previous:
         return "board_changed"
+    # Vasebreaker waits for the player: with nothing queued and no zombies, the board never
+    # changes on its own, so ask again or the level stalls forever.
+    if not queued and vases and not current_threats[0] and since >= MAX_GAP:
+        return "vase_idle"
     idle_gap = MAX_GAP * min(4, 2 ** max(0, fruitless - 2))
     if not queued and since >= idle_gap and any(cost == 0 for _, cost in ready):
         return "idle_check"
@@ -223,7 +145,7 @@ def decision_reason(current, previous, *, conveyor, queued, completed, since, fr
 
 class Agent:
     def __init__(self, brain, max_decisions=None, auto_sun=True, restart=False, levels=1, retries=0,
-                 until_level=50, journal=True, journal_dir=None):
+                 until_level=50, journal=True, journal_dir=None, max_attempts=None):
         self.ctl = Controller(move_duration=0.08)
         if not self.ctl.reader:
             sys.exit("Can't read game memory. Is Plants vs. Zombies running? (run as admin if needed)")
@@ -234,6 +156,7 @@ class Agent:
         self.restart = restart
         self.levels = levels
         self.retries = retries
+        self.max_attempts = max_attempts
         self.until_level = until_level
         self.journal = Journal(journal_dir) if journal else None
         self.recorder = None
@@ -259,6 +182,7 @@ class Agent:
         self.last_mowers = None
         self.level_finished = False
         self.execution = None
+        self.vase_observer = vasebreaker.Observer()
 
     # --- small helpers -------------------------------------------------------
     def log(self, **entry):
@@ -289,6 +213,10 @@ class Agent:
             self.log(kind="read_error", errors=s["errors"])
         if s.get("in_level") and "plants" in s:
             self.annotate(s)
+            s["observed_at"] = datetime.now().isoformat(timespec="milliseconds")
+            recorder = getattr(self, "recorder", None)
+            if recorder:
+                s["plan_progress"] = recorder.progress.report(s)
         return s
 
     def event(self, text):
@@ -300,6 +228,12 @@ class Agent:
         """Facts a human sees but memory doesn't hold directly: how long each plant has
         been in the ground (a Potato Mine arms after ~15 s) and sun collected per minute."""
         now = time.monotonic()
+        observer = getattr(self, "vase_observer", None)
+        if observer and not getattr(self, "level_finished", False):
+            for message in observer.observe(s):
+                self.event(message)
+                if getattr(self, "recorder", None):
+                    self.recorder.events.append(message)
         seen = getattr(self, "plant_seen", None)
         if seen is None:
             return
@@ -413,7 +347,9 @@ class Agent:
                     self.ctl.click(720, 580)        # Almanac Close
                 elif award_clicked and previous_level in (24, 34, 41) and elapsed > 2:
                     pyautogui.press("enter")        # Dave's store intro advances on Enter
-                    if not self.reader.dave_talking():
+                    # Dave keeps an idle speech bubble in the store, so "talking" can stay set
+                    # (seen after 4-4); the store screen itself means the intro is over.
+                    if not self.reader.dave_talking() or self._store_visible():
                         self.ctl.click(*seed_select.STORE_NEXT_LEVEL)
                 elif self._store_visible():
                     pyautogui.press("enter")        # finish any shop dialogue, then leave
@@ -493,7 +429,8 @@ class Agent:
             self.brain.level = info["level"]
             journal = getattr(self, "journal", None)
             if journal:
-                self.brain.notes = journal.prompt_block(situation_of(info))
+                label = f"{(info['level'] - 1) // 10 + 1}-{(info['level'] - 1) % 10 + 1}" if info.get("level") else None
+                self.brain.notes = journal.prompt_block(situation_of(info), label)
         except Exception:  # noqa: BLE001 - only used to stage knowledge
             pass
         names, why, warned = seed_select.choose(self.ctl, self.brain, log=print)
@@ -503,6 +440,7 @@ class Agent:
         plan = getattr(self.brain, "plan", None)
         self.show(f"Loadout: {', '.join(names)}. {why}" + (f"\n    Plan: {plan}" if plan else ""))
         self.log(kind="seed_pick", seeds=names, reasoning=why, warned=warned, plan=plan,
+                 objectives=getattr(self.brain, "objectives", []),
                  options=getattr(self.brain, "last_options", None),
                  think_seconds=round(time.time() - t0, 1), **self.usage_fields())
 
@@ -567,6 +505,7 @@ class Agent:
             if kind == "break_vase" and validate(action, after)[0] == "reject":
                 return True
             if kind == "shovel" and before_types - after_types:
+                self.last_action_after = after
                 return True
             if kind == "plant":
                 source_before = sum(p["name"] == seed["name"] for p in state["seeds"])
@@ -576,6 +515,7 @@ class Agent:
                     for p in after["seeds"]
                 )
                 if seed["name"] in after_types - before_types or source_after < source_before or recharging:
+                    self.last_action_after = after
                     return True
             status, _, seed = validate(action, after)
             if status != "ok":
@@ -651,7 +591,11 @@ class Agent:
             if self.execution:
                 self.execution.finish(action, "rejected", reason)
         else:
+            self.last_action_after = None
             ok = self.perform(action, seed, state)
+            recorder = getattr(self, "recorder", None)
+            if ok and recorder:
+                recorder.record_action(action, seed, state, self.last_action_after)
             self.planted_since_ask += ok
             result = f"{'OK' if ok else 'FAILED (click did not register)'} {desc}"
             if self.execution:
@@ -707,6 +651,7 @@ class Agent:
             return
         self.show(f"Plan for {label}: {plan}")
         self.log(kind="level_plan", level=label, plan=plan, think_seconds=round(time.time() - t0, 1),
+                 objectives=getattr(self.brain, "objectives", []),
                  **self.usage_fields())
 
     def reflect(self, label, outcome, situation=None):
@@ -742,6 +687,7 @@ class Agent:
         if facts and self.execution:
             m = self.execution.metrics()
             facts["plants_placed"] = sum(m.get("planted", {}).values()) or facts["plants_placed"]
+            facts["planted"] = dict(m.get("planted", {}))
             facts["stalled_unspent_sun_seconds"] = m.get("queue_stalled_unspent_sun_seconds")
         return facts
 
@@ -752,6 +698,8 @@ class Agent:
             evidence.update({e["event_id"]: e for e in self.execution.events})
             evidence["s0"] = self.execution.metrics()
         if self.recorder:
+            evidence["p0"] = self.recorder.progress.status(self.recorder.last or {})
+            evidence["a0"] = self.recorder.purchases.metrics()
             evidence.update({f"t{i}": event for i, event in enumerate(self.recorder.events, 1)})
             evidence["b0"] = self.recorder.last
         return evidence
@@ -809,6 +757,7 @@ class Agent:
     def play(self):
         outcome = "stopped"
         previous_context, last_ask_t = None, 0.0
+        previous_vase_observation = None
         last_reward_click = 0.0
         awaiting_result = False
         unreadable_since = None
@@ -911,6 +860,8 @@ class Agent:
                         queued=bool(self.queue), completed=self.had_plan and self.planted_since_ask > 0,
                         since=now - last_ask_t, fruitless=fruitless, retry=brain_errors > 0,
                         rejected=self.had_plan and self.planted_since_ask == 0 and self.rejected_since_ask > 0,
+                        vase_observation=vasebreaker.context(state),
+                        previous_vase_observation=previous_vase_observation,
                     )
                     has_usable_deck = any(not s["name"].startswith("unknown") for s in state["seeds"])
                     if trigger and (has_usable_deck or context[3]):
@@ -922,10 +873,14 @@ class Agent:
                             state["execution"] = self.execution.compact()
                         pending = pool.submit(self.ask_brain, state, list(self.recent), list(self.queue), trigger)
                         previous_context, last_ask_t = context, now
+                        previous_vase_observation = vasebreaker.context(state)
 
                 time.sleep(TICK)
         except KeyboardInterrupt:
             interrupted = True
+            cancel = getattr(self.brain, "cancel", None) if hasattr(self, "brain") else None
+            if cancel:
+                cancel()
             raise
         finally:
             # Freeze waits before waiting for an in-flight reply after the level ends.
@@ -941,13 +896,18 @@ class Agent:
 
     def play_levels(self):
         wins = 0
+        attempts = 0
         last_win = None
         retry = getattr(self, "restart", False)   # --restart may start on the Game Over screen
         retries_left = self.retries
         while wins < self.levels:
+            if getattr(self, "max_attempts", None) is not None and attempts >= self.max_attempts:
+                return "max_attempts", wins
+            self.recorder = None  # previous attempt's objectives must not enter the next plan
             journal = getattr(self, "journal", None)
             if hasattr(self, "brain"):
                 self.brain.plan = None       # written fresh for every attempt
+                self.brain.objectives = []
                 set_loadout = getattr(self.brain, "set_loadout", None)
                 if set_loadout:
                     set_loadout([], None)
@@ -975,14 +935,15 @@ class Agent:
                     loadout = [] if info.get("conveyor") else list(getattr(self, "loadout", []))
                     set_loadout(loadout, level)
                 if journal:
-                    self.brain.notes = journal.prompt_block(situation)
+                    self.brain.notes = journal.prompt_block(situation, label)
                 if self.brain.plan is None and info.get("special") != "whack":
                     self.write_plan(label)
                 reset_brain = getattr(self.brain, "reset", None)
                 if reset_brain and info.get("special") != "whack":
                     reset_brain()  # fresh conversation per level, with this level's journal and plan
             self.recorder = LevelRecorder(label, getattr(self, "loadout", []),
-                                          getattr(self, "pick_options", None))
+                                          getattr(self, "pick_options", None),
+                                          getattr(getattr(self, "brain", None), "objectives", []))
             self.attempt_number = getattr(self, "attempt_number", 0) + 1
             self.execution = ExecutionTracker(
                 f"{getattr(self, 'log_path', Path('test')).stem}:attempt{self.attempt_number}", self.log)
@@ -992,6 +953,7 @@ class Agent:
                                             "had no sun-producing plant; you started anyway")
                 self.loadout_warning = False
             result = self.play()
+            attempts += 1
             self.execution.end(self.queue, result)
             # Whack-a-Zombie is played by the script (mallet clicks), not by the player,
             # so there is nothing for the player to reflect on.
@@ -1015,23 +977,29 @@ class Agent:
                 return result, wins
 
     def run(self):
-        self.show(f"AI ({self.brain.name}) is taking over. Ctrl+C to stop.")
+        self.show(f"AI ({self.brain.name}) is taking over. Press Ctrl+C anywhere to stop.")
         import hashlib
+        attempt_limit = getattr(self, "max_attempts", None)
         code_hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
                        for p in ROOT.glob("*.py")}
         self.log(kind="start", brain=self.brain.name, version=self.reader.version,
                  model=getattr(self.brain, "model", None), effort=getattr(self.brain, "effort", None),
+                 max_attempts=attempt_limit, retries=getattr(self, "retries", 0),
                  plan_effort=getattr(self.brain, "plan_effort", None), code_sha256=code_hashes,
                  journal_sha256=(hashlib.sha256(self.journal.path.read_bytes()).hexdigest()
                                  if self.journal and self.journal.path.exists() else None),
                  architecture="player-queue-learning-v2")
         outcome, wins = "stopped", 0
+        stop_hotkey = StopHotkey(cancel=getattr(self.brain, "cancel", None))
+        self.ctl.stop_check = stop_hotkey.check
+        stop_hotkey.start()
         try:
             self.ctl.wake()
             if self.restart:
                 self.restart_level()
             outcome, wins = self.play_levels()
             messages = {"won": f"Completed {wins} level(s).",
+                        "max_attempts": f"Completed {attempt_limit} attempts; won {wins} level(s).",
                         "lost": "The zombies ate the AI's brains. Level lost.",
                         "left": "The level was closed.",
                         "max_decisions": f"Stopped after {self.decisions} decisions (--max-decisions).",
@@ -1042,12 +1010,21 @@ class Agent:
             messages["target_reached"] = "The requested Adventure endpoint has already been passed."
             self.show(messages.get(outcome, outcome))
         except KeyboardInterrupt:
+            stop_hotkey.close()
+            cancel = getattr(self.brain, "cancel", None)
+            if cancel:
+                cancel()
+            outcome = "stopped"
             self.show("Stopped by you.")
             if self.reader.scene() == "playing" and self.reader.board():
                 self.ctl.pause()
         except pyautogui.FailSafeException:
             self.show("Stopped: mouse hit a screen corner (fail-safe).")
         finally:
+            stop_hotkey.close()
+            close = getattr(self.brain, "close", None)
+            if close:
+                close()
             if self.execution:
                 self.execution.end(self.queue, outcome)
             self.log(kind="stop", outcome=outcome, decisions=self.decisions, wins=wins)
@@ -1072,6 +1049,8 @@ def main():
                         help="advance through Adventure and stop after absolute level N (1-50)")
     ap.add_argument("--retries", type=int, default=0, metavar="N",
                     help="retry a lost level up to N times")
+    ap.add_argument("--max-attempts", type=int, metavar="N",
+                    help="stop after N total attempts, counting wins and losses across levels")
     ap.add_argument("--no-journal", action="store_true",
                     help="don't read or write the player's lessons journal (journal/lessons.json)")
     ap.add_argument("--journal-dir", metavar="DIR",
@@ -1079,8 +1058,10 @@ def main():
     args = ap.parse_args()
     if not 1 <= args.levels <= 50 or args.retries < 0 or (
         args.until_level is not None and not 1 <= args.until_level <= 50
+    ) or (
+        args.max_attempts is not None and args.max_attempts < 1
     ):
-        ap.error("level limits must be 1 through 50 and --retries must be nonnegative")
+        ap.error("level limits must be 1 through 50, --retries nonnegative, and --max-attempts positive")
     try:
         brain = make_brain(args.brain)
     except Exception as e:  # noqa: BLE001
@@ -1088,7 +1069,7 @@ def main():
     Agent(brain, max_decisions=args.max_decisions, auto_sun=not args.no_auto_sun,
           restart=args.restart, levels=50 if args.until_level else args.levels, retries=args.retries,
           until_level=args.until_level or 50, journal=not args.no_journal,
-          journal_dir=args.journal_dir).run()
+          journal_dir=args.journal_dir, max_attempts=args.max_attempts).run()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,110 @@
+Roof observation change and three reruns - 21 November 2026
+
+Implemented
+===========
+Added the same factual roof explanation to plant selection, gameplay and boss
+roof observations: straight projectiles fired from the sloped back of the roof
+can strike the roof before reaching distant zombies; a peashooter there cannot
+cover the whole row, while lobbed projectiles clear the slope. The player still
+chooses its own loadout, positions and strategy.
+
+Changed row summaries from "can hit the closest zombie" to a firing-direction
+count, explicitly stating that range, slope and obstructions can prevent hits.
+Renamed the internal helper to in_firing_direction to match its actual check.
+Did not introduce an unverified exact roof range or automatically choose plants.
+
+Added --max-attempts N so wins and losses both consume the requested attempt
+budget, with advancement after wins. This was needed because --retries alone
+sets a loss limit per level rather than a total attempt limit. Added tests for
+mixed wins/retries and for three losses without a fourth navigation.
+
+Validation: 94 tests passed across test_learning, test_campaign and
+test_execution. Verified the CLI help. The initial test run exposed an incomplete
+synthetic zombie fixture, which was corrected before the passing run.
+
+Run
+===
+PVZ_MODEL=haiku, PVZ_EFFORT=low, PVZ_PLAN_EFFORT=low
+agent.py --campaign --retries 2 --max-attempts 3
+Used the existing journal, including the earlier failures; it was not rewritten
+by the operator. Saved the pre-run journal in:
+logs/world5_roof_rule_before_reruns_2026-11-21.json
+
+The game was already at the 5-2 chooser. No level was manually restarted and no
+in-progress gameplay was discarded. No operator mouse/keyboard input was used
+while the player ran.
+
+Results
+=======
+Attempt  Level  Result  Recorded wave  Time     Cabbages  Peashooters  OK/Skipped
+1        5-2    lost       11/20       5m01s        0          6         20/6
+2        5-2    lost       20/20       9m35s       14          0         91/9
+3        5-2    lost       12/20       5m38s        8          0         39/5
+
+The recorded wave is the recorder's final observed board; the last decision
+snapshot can be earlier. All three Game Over screenshots were visually checked.
+A final live screenshot confirmed zombies_won. No agent.py process remained.
+The log has exactly three level_start/level_end pairs and stop(outcome=lost).
+The run made 150 decisions, with 150 successful plant actions, 20 rejected
+orders and zero failed clicks. No further attempts were launched.
+
+Did the player understand the new fact?
+======================================
+Yes, after the first rerun. Cabbage-pult was offered on attempt 1 but not picked.
+I verified that the live decision prompt contained the new roof explanation.
+On attempt 2 the player chose cabbage-pult as its main damage source, and its
+written plan explicitly said to avoid peashooters on the slope because peas hit
+the roof. It placed 14 cabbages and reached the final wave.
+
+Attempt 3 again chose cabbage-pult for its roof damage. It also selected
+peashooter, but planted none; all eight sustained attackers placed were cabbages.
+This is evidence that the factual explanation reached the player's choices.
+It is not evidence that the player has learned a stable winning strategy.
+
+Important comparison limit
+==========================
+All three new attempts began with five roof cleaners. The earlier three 5-2
+attempts began with none. Cleaner firing events occurred in the new logs and
+remaining cleaners are visible in the second Game Over screenshot. The operator
+did not buy cleaners or modify the game state. This changed starting condition,
+the continuing journal and different player choices mean the increased wave
+reached cannot be attributed solely to the prompt change.
+
+What still failed
+=================
+The player frequently bought empty pots or extra sunflowers instead of funding
+the next sustained attacker, then rebuilt only after zombies reached the plants.
+Some cabbages were placed to the street side of a zombie that had already passed
+them. The existing factual feedback reported those forward-firing limitations.
+
+Attempt 2 lost row 0 in the final wave. The player had used 14 cabbages, nine
+wall-nuts, five tall-nuts, nine squashes and four cherry bombs, but repeated losses
+and late rebuilds left that lane without an attacker. Its reflection's final
+board reported 375 sun; the last decision snapshot had 275 sun. The final board
+also had two cleaners remaining in other rows, which cannot save row 0.
+
+Attempt 3 built eight cabbages, five wall-nuts, six sunflowers and 20 pots. Its
+planned tall-nut and cherry bomb were never ordered. It lost all six sunflowers
+and six cabbages; the losing row 2 had no attacker and had spent its cleaner in
+wave 4. It repeatedly spent 25 sun on another pot while delaying a 100-sun
+attacker. Two plant orders omitted the seed name and were rejected.
+
+Rejected orders also involved missing pots, occupied cells, and numerical slot
+references. All actually executed clicks registered; these are not focus failures.
+
+The Tall-nut reflection needs a precise reading: its detailed observation says
+the planned col-2 placement before wave 2 was not ordered, while Tall-nuts were
+placed at other columns. That is supported by the action history. An earlier
+operator reading conflated skipping that exact plan with placing no Tall-nuts;
+the five completed Tall-nuts do not disprove the narrower plan-adherence claim.
+The resulting insistence on the same untested early placement is still a
+strategy hypothesis, rather than an established explanation of the loss.
+
+Artifacts
+=========
+Full log: logs/run_2026-11-21_11-42-51_subscription.jsonl
+Metrics: logs/world5_roof_rule_reruns_2026-11-21_audit.json
+Saved result images share the run log's prefix and level_42_lost suffix.
+
+The three requested attempts are complete. The roof fact and corrected summary
+remain in the code; no further strategy changes were made during the run.

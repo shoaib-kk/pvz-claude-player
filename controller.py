@@ -76,6 +76,7 @@ class Controller:
             return None
 
     def focus(self):
+        self._check_stop()
         win32gui.ShowWindow(self.hwnd, win32con.SW_RESTORE)
         try:
             win32gui.SetForegroundWindow(self.hwnd)
@@ -87,13 +88,20 @@ class Controller:
         return ox + int(gx), oy + int(gy)
 
     # --- primitives ----------------------------------------------------------
+    def _check_stop(self):
+        check = getattr(self, "stop_check", None)
+        if check:
+            check()
+
     def hover(self, gx, gy):
+        self._check_stop()
         pyautogui.moveTo(*self.to_screen(gx, gy), duration=self.move_duration)
 
     def click(self, gx, gy, button="left"):
         if not (0 <= gx < 800 and 0 <= gy < 600):
             raise ValueError(f"click ({gx}, {gy}) is outside the game window")
         self.hover(gx, gy)
+        self._check_stop()
         pyautogui.click(button=button)
         time.sleep(CLICK_DELAY)
 
@@ -133,12 +141,14 @@ class Controller:
         self.click(*seed)
         self.click(*target)
         # Right-click cancels the held seed if planting failed (not enough sun etc.)
+        self._check_stop()
         pyautogui.click(button="right")
 
     def shovel(self, row, col, terrain="day"):
         target = self.cell_center(row, col, terrain)
         self.click(*self.shovel_center())
         self.click(*target)
+        self._check_stop()
         pyautogui.click(button="right")
 
     def collect_sun(self):

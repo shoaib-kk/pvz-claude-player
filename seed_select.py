@@ -122,6 +122,7 @@ def choose(ctl, brain, log=print):
     """Full chooser flow. Returns (picked_names, reasoning)."""
     ctl.wake()
     time.sleep(1.0)  # let the panel finish sliding in
+    wait_for_bank(ctl)
     slots = bank_size(ctl)
     locked = clear_bank(ctl, log, slots)
     try:
@@ -155,6 +156,17 @@ def choose(ctl, brain, log=print):
     ctl.click(*LETS_ROCK)
     warned = confirm_warning(ctl, log)
     return forced + names, pick.get("reasoning", ""), warned
+
+
+def wait_for_bank(ctl, timeout=15):
+    """The roof intro can expose the chooser before its bank slides on screen."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        _, y = ctl.seed_center(0)
+        if 30 <= y <= 60 and in_chooser(ctl):
+            return
+        time.sleep(0.2)
+    raise RuntimeError("Plant chooser seed bank did not finish sliding into view")
 
 
 # Crazy Dave's shop (first shown after 3-4): yellow "NEXT LEVEL" sign at the bottom centre.

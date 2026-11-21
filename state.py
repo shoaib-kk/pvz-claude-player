@@ -239,6 +239,14 @@ class GameReader:
             if ctype == O.USABLE_SEED_PACKET:
                 coin["x"] = round(x) + 20
                 coin["name"] = name(PLANT_NAMES, struct.unpack_from("<i", raw, b + O.CO_SEED)[0])
+                coin["packet_id"] = f"{i}:{struct.unpack_from('<I', raw, b + O.COIN_SIZE - 4)[0]}"
+                age = struct.unpack_from("<i", raw, b + O.CO_AGE)[0]
+                elapsed = struct.unpack_from("<i", raw, b + O.CO_DISAPPEAR)[0]
+                fading = struct.unpack_from("<i", raw, b + O.CO_FADE)[0] > 0
+                coin["age_seconds"] = round(max(0, age) / 100, 1)
+                coin["expires_in"] = round(max(0, O.VASE_PACKET_LIFETIME - elapsed) / 100, 1)
+                coin["flashing"] = elapsed > O.VASE_PACKET_LIFETIME - 300
+                coin["fading"] = fading
             out.append(coin)
         return out
 
@@ -246,6 +254,15 @@ class GameReader:
         """Uncollected sun on the lawn, with the game-pixel point to click."""
         return [{"x": c["x"], "y": c["y"], "value": O.SUN_TYPES[c["type"]]}
                 for c in self.coins(board) if c["type"] in O.SUN_TYPES]
+
+    def vase_seeds(self, board):
+        """Vasebreaker has lawn packets rather than a normal seed bank."""
+        return [
+            {"name": coin["name"], "slot": None, "cost": 0, "ready": True,
+             "pickup": (coin["x"], coin["y"]),
+             **{key: coin[key] for key in ("packet_id", "age_seconds", "expires_in", "flashing", "fading")}}
+            for coin in self.coins(board) if coin["type"] == O.USABLE_SEED_PACKET
+        ]
 
     def awards(self, board):
         """End-of-level rewards (trophy, money bag, note, new seed packet...)."""
@@ -276,7 +293,12 @@ class GameReader:
                 continue
             col, row = struct.unpack_from("<2i", raw, b + O.GI_COL)
             if 0 <= row < 6 and 0 <= col < O.COLS:
-                items.append({"type": kind, "row": row, "col": col})
+                item = {"type": kind, "row": row, "col": col}
+                if kind == "vase":
+                    # Read only the visible sprite. Plain vases never reveal their contents.
+                    appearance = struct.unpack_from("<i", raw, b + O.GI_STATE)[0]
+                    item["appearance"] = O.VASE_APPEARANCES.get(appearance, "unknown")
+                items.append(item)
         ice_start = struct.unpack("<6i", self._block(board + O.GRID_TYPES + 0x4A4, 24))
         ice_timers = struct.unpack("<6i", self._block(board + O.GRID_TYPES + 0x4BC, 24))
         for row, (left, timer) in enumerate(zip(ice_start, ice_timers)):
@@ -328,7 +350,9 @@ class GameReader:
         # Each section is read separately so one bad offset doesn't hide the rest.
         for key, fn in [("sun", self.sun), ("wave", self.wave), ("paused", self.paused),
                         ("tutorial", self.tutorial),
-                        ("seeds", lambda b: self.seeds(b, state["conveyor"])), ("plants", self.plants),
+                        ("seeds", lambda b: self.vase_seeds(b) if state["special"] == "vases"
+                         else self.seeds(b, state["conveyor"])),
+                        ("plants", self.plants),
                         ("zombies", self.zombies), ("mowers", lambda b: self.mowers(b, rows)),
                         ("sun_drops", self.sun_drops), ("awards", self.awards),
                         ("cells", lambda b: self.cell_types(b, rows)), ("items", self.grid_items)]:
@@ -342,12 +366,6 @@ class GameReader:
                 if p["row"] < rows and p["type"] not in ("pumpkin", "lily_pad", "flower_pot", "coffee_bean"):
                     grid[p["row"]][p["col"]] = p["type"]
             state["grid"] = grid
-        if state["special"] == "vases":
-            state["seeds"] = [
-                {"name": coin["name"], "slot": None, "cost": 0, "ready": True,
-                 "pickup": (coin["x"], coin["y"])}
-                for coin in self.coins(board) if coin["type"] == O.USABLE_SEED_PACKET
-            ]
         if errors:
             state["errors"] = errors  # tells you which offsets to fix
         return state

@@ -213,6 +213,17 @@ class FreeCardTests(unittest.TestCase):
         self.assertIsNone(decision_reason(current, current, since=30, fruitless=4, **opts))
         self.assertEqual(decision_reason(current, current, since=120, fruitless=4, **opts), "idle_check")
 
+    def test_vasebreaker_with_nothing_queued_asks_again(self):
+        s = board()
+        s["sun"], s["special"] = 0, "vases"
+        s["items"] = [{"type": "vase", "row": 0, "col": 5}]
+        current = decision_context(s)
+        opts = dict(conveyor=False, queued=False, completed=False)
+        self.assertIsNone(decision_reason(current, current, since=10, fruitless=5, **opts))
+        self.assertEqual(decision_reason(current, current, since=30, fruitless=5, **opts), "vase_idle")
+        self.assertIsNone(decision_reason(current, current, since=30, fruitless=5,
+                                          conveyor=False, queued=True, completed=False))
+
 
 if __name__ == "__main__":
     unittest.main()

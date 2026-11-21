@@ -1,0 +1,114 @@
+Diagnosis after the roof-rule reruns - 21 November 2026
+
+Scope: read-only replay of logs/run_2026-11-21_11-42-51_subscription.jsonl,
+the saved journal evidence, and the current code. No new player calls or games.
+
+Finding 1: the player overlooks legal actions
+============================================
+Decision 108 in attempt 2 is a useful regression case. Its input has 275 sun,
+an empty flower pot at row 0 col 0, a 110-HP zombie at x=70 in row 0, and no
+cleaner in that row. Wall-nut, Tall-nut and Cabbage-pult are ready. The player
+says no cell between the zombie and the house can be planted in time, and
+returns keep/actions=[]. The existing validator returns ok for each of those
+three plants at (0,0) on that exact recorded state.
+
+Decision 107 has the same legal options at (0,0), but the player requests a
+Tall-nut at (0,1). Its snapshot still has a pot there, but that pot disappears
+during the 10.18-second call and the order is rejected. Decision 108 then takes
+11.39 seconds before returning no action. These observations do not prove that
+a different order would have won; they do disprove the idea that all useful
+legal options were absent from the observation.
+
+Another example: decision 84 says a cabbage at (0,4) will hit the conehead at
+col 1. The board summary correctly reports zero existing attackers in firing
+direction. It nevertheless requests the new cabbage farther toward the street.
+The input already contains the forward-firing rule. More repetitions of that
+rule alone will not establish that the player can apply it reliably.
+
+Recommended interface repair:
+- Make plant name, row and column required for plant actions; restrict names to
+  actual packet names, eliminating missing-seed and slot-number requests.
+- Supply a compact, unranked list/mask of legal target cells per packet, with
+  affordability and recharge separate. These are mechanical placement facts,
+  not a strategy or an automatically selected move.
+- Label observation age, include time-stamped action outcomes and clear support
+  availability. Keep live validation because a legal observed target can vanish.
+- Replay decisions 84, 107 and 108 offline before committing to another full run.
+  Check whether the player can recognize legal placements and firing direction.
+
+Finding 2: the feedback confuses replacement value with cash spent
+================================================================
+Every attempt starts with 20 free flower pots. In attempt 3 the player buys
+20 more pots for 500 sun. The recorder counts 35 lost pots and reports their
+replacement value as 875 sun. That replacement-value calculation is arithmetically
+correct. It is not 875 sun spent by the player: at least 15 of the destroyed pots
+were supplied free, because it only bought 20 altogether.
+
+The reflection interprets pot loss as the dominant economic drain and turns it
+into "Put a wall_nut or tall_nut in front of every flower_pot". The player then
+spends many turns preparing/protecting pots, while its attacker purchases lag.
+Actual attempt-3 packet spending was pots 500, cabbages 800, sunflowers 300,
+wall-nuts 250. Pot disappearance alone also does not measure defensive time bought
+or damage contributed by the supported plant.
+
+Recommended measurement repair:
+- Record initial/free plants separately from player purchases.
+- Report actual packet spending, replacement value of lost plants, and purchased
+  assets destroyed as distinct quantities. Do not call all of them sun lost.
+- Separate initial pots from paid replacement pots in timelines.
+- Count an unsupported cause of disappearance as disappearance, rather than
+  automatically asserting it was eaten, when removal cause is not known.
+
+Finding 3: the journal overgeneralizes and loses successful behavior
+==================================================================
+Attempt 2 reaches wave 20 with cabbage-pult, squash, cherry_bomb, wall_nut and
+tall_nut. It places 14 cabbages, 9 squashes, 4 cherry bombs and 5 tall-nuts.
+Attempt 3 replaces Squash with Peashooter in its loadout, uses no Peashooters,
+and never orders a Tall-nut or Cherry Bomb. It reaches wave 12. This is not a
+controlled test of any one change, but it shows it did not preserve and refine
+the near-winning behavior.
+
+The journal already carries a next_attempt experiment into later prompts.
+Therefore adding another experiment sentence is not the missing feature.
+Its prose experiment repeatedly insists on a pole-vaulter-lane col-2 Tall-nut
+before wave 2. The lane may not be known yet; that exact condition was not
+tested. A specific proposed placement is being promoted to an enduring rule.
+Roof-specific pot advice also leaks into the general lesson list.
+
+Recommended learning repair:
+- Preserve concise factual summaries/loadouts of prior same-level attempts in
+  selection and planning, not just in the reflection after the next loss.
+- Keep hypotheses explicitly distinct from verified game mechanics.
+- Let the player define one measurable experiment per attempt. Carry its goals
+  and observed completion state alongside the board so it can notice its own
+  omissions; do not have the operator choose or automatically execute the goal.
+- Track whether a plan was tested before changing multiple loadout/placement
+  choices. Retain the strongest factual result when rewriting lessons.
+
+Finding 4: latency aggravates brittle decisions
+==============================================
+Median decision latency is 4.39s, 5.18s and 4.62s; maxima 11.81s, 12.88s and
+11.07s. In the best attempt, its last two decisions take 10.18s and 11.39s.
+An emergency response based on a nearly eaten pot can therefore become illegal
+before it is received. The static JSON schema allows malformed actions, and
+the player sometimes explains a move without emitting its matching action.
+
+There are zero recorded failed clicks and 150 completed plant actions in these
+reruns. The evidence points primarily to decision quality, timing and learning,
+rather than repeated focus/click failures. The controller's OK check can also
+accept seed recharge as success, so it is not a complete proof of correct target
+placement. Future replay instrumentation can cross-check observed target cells.
+
+Recommended sequence
+====================
+1. Correct the financial/free-pot reporting and action contract.
+2. Add compact legal-target facts and test the recorded emergency boards offline.
+3. Ground plan/experiment tracking and preserve prior attempt comparisons.
+4. Only then run a bounded live comparison with the same initial game conditions
+   and journal snapshot. If legal, factually complete replay prompts still yield
+   contradictions, measure player reasoning/settings as a separate variable.
+
+These changes improve what the AI can observe and how it learns; they do not
+hard-code a roof layout or choose defensive plants for it. Winning remains the
+player's responsibility. A performance improvement is a testable hypothesis,
+not something established by the current unit tests.

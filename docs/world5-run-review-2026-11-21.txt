@@ -1,0 +1,139 @@
+World 5 campaign review - 21 November 2026
+
+Result
+======
+Ran the subscription player with PVZ_MODEL=haiku, PVZ_EFFORT=low,
+agent.py --campaign --retries 2, using its existing journal.
+5-1: loss, loss, win. Verified the Flower Pot reward screenshot.
+5-2: loss, loss, loss. The campaign exited automatically after the third loss.
+No fourth gameplay attempt was started by the operator. A subsequent live check
+showed the empty plant chooser; the agent process was no longer running.
+
+Evidence reviewed
+=================
+The entire campaign JSONL, including all six loadouts/plans, 153 decisions,
+166 action results, 517 execution events, six execution summaries, reflections,
+unused decisions, transitions, and stop record. All six saved result screenshots
+were visually checked. Also reviewed the preliminary launch log, player prompts,
+board description, validation, queue handling, and journal report generation.
+
+Campaign log: logs/run_2026-11-21_11-05-54_subscription.jsonl
+Preliminary launch: logs/run_2026-11-21_11-01-55_subscription.jsonl
+Per-attempt audits: logs/world5_2026-11-21_level41_audit.json
+                   logs/world5_2026-11-21_level42_audit.json
+
+5-2 attempts, from recorded evidence
+===================================
+Attempt  Duration  Wave   Plants placed  Rejected orders  Recorded sun lost
+1        2m17s      5/20       13               3                 500
+2        1m57s      4/20        8               2                 300
+3        4m26s      9/20       40              10                1200
+
+The 5-2 action records total 62 OK actions (61 plantings and one shovel),
+15 SKIPPED orders, and zero FAILED clicks. The sole failed click in the full
+campaign occurred on the first 5-1 attempt. Routine clicking/focus failures do
+not explain the three 5-2 losses.
+
+Main cause: ineffective roof damage and incomplete coverage
+==========================================================
+The first two 5-2 loadouts omitted cabbage_pult despite its availability.
+Their actual plantings included seven and five peashooters respectively, with
+no lobbers. These peashooters were placed on the sloping back of the roof,
+where straight shots hit the roof before reaching distant zombies.
+
+The snapshots support this directly. During attempt 1, decision 94 shows a
+peashooter at (1,2) and its approaching zombie at x=522 with 270 HP. Decision 95
+still shows 270 HP at x=412. Damage appears only much closer. In row 3, the
+zombie remains at 270 HP through x=354 (decision 99); at x=251 it has 150 HP,
+then passes the shooter and survives the rest of the lane. Rebuilding a shooter
+to the right of a zombie cannot stop that zombie once it has passed.
+
+Attempt 3 brought cabbage_pult and lasted substantially longer, but its first
+cabbage was planted about 116 seconds after level_start. Its four cabbages
+went to rows 2, 0, 2, and 4. The losing lane, row 1, never received one. Its
+defense remained peashooters, and a conehead ate through the row. The final
+observed board had zero row-1 attackers and 350 sun, with all packets ready.
+This improvement is consistent with better roof damage helping, but the
+changed loadout and decisions mean it is not a controlled comparison.
+
+Information defects contributing to those choices
+=================================================
+1. Plant selection lacks an important rule supplied later during play.
+   PICK_SYSTEM and pick_prompt in brains.py explain the roof's pot requirement
+   but omit its slope/straight-projectile rule. The decision board does state
+   that rule, but by then a player that omitted lobbers cannot change loadout.
+
+2. The row summary can overstate effective damage.
+   brains.can_hit_col checks forward column ordering, with special cases for
+   multi-directional plants. It does not account for roof slope, shot height,
+   or obstacles. _row_summary nevertheless calls eligible plants "can hit the
+   closest zombie". This invites treating a back-column peashooter as adequate
+   coverage while its peas are actually blocked. The row summary itself defines
+   this as a column-order count, but that definition is weaker than the label.
+
+3. Placement facts are less complete in the player's plant descriptions than
+   in validation. Potato Mine is described as "Land only", but validation
+   rejects it on a Flower Pot. Four 5-2 orders were rejected for this rule,
+   including three in attempt 3. The player repeatedly reintroduced the same
+   illegal idea despite receiving feedback. Two attempts also spent a loadout
+   slot on this unavailable-on-pots option.
+
+4. Mower history is incorrectly inferred.
+   The roof boards start with no cleaners. SYSTEM_PROMPT says every row has a
+   mower, and journal.LevelRecorder.ending calls an absent mower "already been
+   used" even when no firing event was observed. All three 5-2 reflection
+   reports make that unsupported claim. This can contaminate lessons about
+   spending emergency defenses; absence and observed use must be distinct.
+
+Execution and learning problems
+===============================
+Eight 5-2 orders targeted missing pots, four requested Potato Mine on a pot,
+two tried to add a pot where one already existed, and one used seed "6"
+instead of a plant name. These account for all 15 rejected orders.
+
+The board can change during a player call. Median decision time was 4.34s,
+4.50s, and 4.60s for the three 5-2 attempts; maxima were 10.19s, 8.17s, and
+10.74s. Some missing-pot rejections can therefore reflect stale observations,
+not merely misreading the board. In one concrete attempt-2 error, the player
+said it would pot and squash the same cell, but actually potted (2,0) and
+requested squash at (2,1), where no pot remained.
+
+In attempt 3, the player planted 12 sunflowers and lost five, while the losing
+lane remained under-defended. Tall-nut was selected but both orders were
+rejected for missing pots. The player also sometimes sent actions inconsistent
+with its explanation: decision 151 says it will cancel a sunflower sequence
+and build a Tall-nut, but the actual JSON retains the sunflower sequence.
+The executor follows the structured actions, not the prose.
+
+The exact queue-stalled-with-unspent-sun measurements are 44.62s, 65.42s,
+and 17.44s. These are not all avoidable idle time: they include waiting for
+a 100-sun shooter while holding less than 100 sun, and waiting for recharge.
+It would be misleading to blame those totals alone on poor economy.
+
+The journal did not converge on the main roof damage problem. Earlier
+reflections emphasized adding more shooters and placing them farther back,
+while omitting the slope problem. Attempt 2's back-column peashooters then
+performed worse. Treat the player's reflection as a hypothesis; its wording
+about why it lost is not independent proof of the cause.
+
+Recommended repairs before a fresh run
+======================================
+Give the same complete terrain/placement facts at selection, play and
+reflection; make the row summary describe only verified reach; distinguish
+absent cleaners from observed fired cleaners; explicitly specify plant names
+in the action contract. These are mechanics/interface corrections and need
+not prescribe a winning strategy. Evaluate subsequent player learning after
+those factual inconsistencies are removed.
+
+Operator change during this run
+===============================
+The preliminary launch crashed before any gameplay decisions: the roof chooser
+was visible while its seed bank was still above the screen, causing a click at
+(110,-44). Added seed_select.wait_for_bank before clearing/reading the chooser.
+Added an offline regression for the hidden-to-visible coordinate sequence;
+all 33 test_campaign tests passed. Resumed from the same 5-1 chooser. This
+preliminary failure was not counted as a level loss and discarded no gameplay
+progress. The six gameplay attempts used the same player code and rules.
+
+The diagnosis above has been recorded without modifying player strategy,
+rewriting its lessons, or starting another run after the stopping condition.

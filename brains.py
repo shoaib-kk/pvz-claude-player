@@ -13,10 +13,14 @@ SimpleBrain  - a dumb rule-based player. No key needed; used to test the loop.
 
 import json
 import os
+import copy
 
 import offsets as O
 import plant_info
 from sun_accounting import MECHANICS_AND_EVIDENCE, accounting_lines
+from placement import legal_target_lines
+from action_contract import action_schema
+from plan_progress import OBJECTIVES_SCHEMA, OBJECTIVES_RULE
 
 # ---------------------------------------------------------------------------
 # Turning game state into text a model can read
@@ -36,10 +40,16 @@ SHOOTERS = {"peashooter", "snow_pea", "repeater", "gatling_pea", "threepeater", 
 # Shooters that can hit something in another direction than straight toward the street.
 NOT_FORWARD_ONLY = {"split_pea", "starfruit", "cattail"}
 
+ROOF_RULES = (
+    "Plants need a Flower Pot first. Peas and other straight projectiles fired from the sloped "
+    "back of the roof hit the roof before reaching zombies farther toward the street. "
+    "A peashooter on the slope therefore cannot cover the whole row; it may hit only nearby "
+    "zombies before they pass it. Lobbed projectiles clear the roof slope."
+)
 
-def can_hit_col(plant, plant_col, zombie_col):
-    """Can this attacker hit a zombie at zombie_col? Straight shooters and lobbers fire toward the
-    street (higher columns) only; a zombie standing on the plant's own tile still gets hit."""
+
+def in_firing_direction(plant, plant_col, zombie_col):
+    """Check direction only, without claiming range or an unobstructed projectile path."""
     return plant in NOT_FORWARD_ONLY or zombie_col >= plant_col
 
 
@@ -50,13 +60,14 @@ def shot_behind_zombies(state, row, col, plant):
         return False
     cols = [x_to_col(z["x"]) for z in state.get("zombies", [])
             if z.get("row") == row and z["x"] < 820 and z.get("type") != "dr_zomboss"]
-    return bool(cols) and all(not can_hit_col(plant, col, zc) for zc in cols)
+    return bool(cols) and all(not in_firing_direction(plant, col, zc) for zc in cols)
 
 
 def _row_summary(state, zombies):
-    """One line per row: attackers, how many can reach the closest zombie, mower, closest zombie."""
+    """Count attackers and firing direction, without inferring projectile reach."""
     out = ["", "Row summary (attackers = plants in the row that shoot or lob; "
-               "'can hit' = attackers at or left of the closest zombie):"]
+               "firing direction does not establish reach: range, roof slope, and other "
+               "obstructions can prevent hits):"]
     mowers = state.get("mowers", [])
     types = state.get("cells")
     for r, row in enumerate(state["grid"]):
@@ -67,8 +78,9 @@ def _row_summary(state, zombies):
         mower = "mower ready" if r < len(mowers) and mowers[r] else "no mower"
         if cols:
             closest = min(cols)
-            hit = sum(can_hit_col(p, c, closest) for c, p in attackers)
-            out.append(f"  row {r}: {len(attackers)} attackers ({hit} can hit the closest zombie), "
+            facing = sum(in_firing_direction(p, c, closest) for c, p in attackers)
+            out.append(f"  row {r}: {len(attackers)} attackers ({facing} with the closest zombie "
+                       f"in their firing direction), "
                        f"{mower}, {len(cols)} zombies, closest at col {closest}")
         else:
             out.append(f"  row {r}: {len(attackers)} attackers, {mower}, no zombies")
@@ -86,7 +98,8 @@ def describe(state, recent, queue=None, known_plants=(), *, compact=False):
     """Compact text description of the board for the model."""
     lines = []
     wave_now, wave_total = state.get("wave", [0, 0])
-    lines.append(f"Sun: {state['sun']}    Wave: {wave_now}/{wave_total}"
+    lines.append((f"Sun: {state['sun']} (not needed for free lawn packets)" if state.get("special") == "vases"
+                  else f"Sun: {state['sun']}    Wave: {wave_now}/{wave_total}")
                  + (f"    Sun collected in the last minute: {state['sun_per_min']}"
                     if state.get("sun_per_min") is not None else ""))
     terrain = state.get("terrain", "day")
@@ -98,11 +111,14 @@ def describe(state, recent, queue=None, known_plants=(), *, compact=False):
                 "Potato Mines and Spikeweeds can't go in water. Aquatic plants need open water.",
         "fog": "Rows 2 and 3 are water. A land plant in a water cell needs a lily_pad in that cell first "
                "(two actions). Mushrooms are awake and there is no falling sun.",
-        "roof": "Plants need a Flower Pot first. The roof slopes, so straight shots hit the slope; lobbed shots don't.",
-        "boss": "Roof: plants need Flower Pots. Dr. Zomboss rolls fireballs and iceballs down rows "
+        "roof": ROOF_RULES,
+        "boss": ROOF_RULES + " Dr. Zomboss rolls fireballs and iceballs down rows "
                 "(an Ice-shroom puts out a fireball, a Jalapeno melts an iceball) and lowers his head to attack.",
     }
     lines.append(f"Terrain: {terrain}. " + rules.get(terrain, ""))
+    if state.get("observed_at"):
+        lines.append(f"Observation time: {state['observed_at']}; the game continues while you think. "
+                     "Legal cells and occupants may change before execution.")
     if state.get("conveyor"):
         lines.append("Conveyor cards are free and single-use; a full belt stops receiving new cards. "
                      "Only the cards listed below exist.")
@@ -112,10 +128,22 @@ def describe(state, recent, queue=None, known_plants=(), *, compact=False):
                      "it leaves its launch cell immediately, so the cell can be reused. Explode-o-nuts explode "
                      "on contact. There are no other plants.")
     elif special == "vases":
-        lines.append("Vasebreaker: use break_vase to smash a vase, starting near the right edge. "
-                     "Use its temporary seed packets before they expire. Open one at a time.")
+        lines.append("Vasebreaker: break_vase smashes the vase at the specified cell. "
+                     "A released zombie appears at that vase's position, already on the lawn, and walks "
+                     "toward the house; it does not enter from the street. There are no scheduled waves "
+                     "or normal seed bank, and no falling sun. Revealed plant packets are FREE (0 sun), "
+                     "single-use, and can be planted in any legal cell, regardless of the vase's row. "
+                     "They last roughly 15 seconds after landing, flashing near expiry; countdowns below "
+                     "are estimates at normal game speed. A green leafy vase is shown as vase(plant) "
+                     "and guarantees a plant; a plain vase's contents are unknown. Jack-in-the-Box "
+                     "explosions can also break nearby vases. Each arrangement ends when every vase is "
+                     "broken and all hostile zombies are gone; Adventure 4-5 has successive arrangements.")
+        count = sum(i["type"] == "vase" for i in state.get("items", []))
+        lines.append(f"Vases remaining: {count}. Free packets available: {len(state['seeds'])}."
+                     + (f" Arrangement observed: {state['vase_stage']}." if "vase_stage" in state else ""))
     lines.append("")
-    lines.append("Seeds (slot: name, sun, status):")
+    lines.append("Free single-use packets on the lawn (plant by name):" if special == "vases"
+                 else "Seeds (slot: name, sun, status):")
     for s in state["seeds"]:
         if s["ready"]:
             status = "READY"
@@ -126,8 +154,18 @@ def describe(state, recent, queue=None, known_plants=(), *, compact=False):
             left = max(0, (full - now)) / 100 if full else 0
             status = f"recharging, ready in {left:.0f}s" if left else "recharging"
         afford = "" if s["cost"] is None or s["cost"] <= state["sun"] else " (can't afford)"
-        lines.append(f"  {s['slot']}: {s['name']}, {s['cost']} sun, {status}{afford}")
-    lines.extend(accounting_lines(state, queue))
+        if special == "vases":
+            timer = f", expires in ~{s['expires_in']:.1f}s" if "expires_in" in s else ", expiry unknown"
+            warning = ", FADING" if s.get("fading") else ", FLASHING" if s.get("flashing") else ""
+            age = f", age ~{s['age_seconds']:.1f}s" if "age_seconds" in s else ""
+            lines.append(f"  {s['name']}: FREE, {status}{timer}{warning}{age}")
+        else:
+            lines.append(f"  {s['slot']}: {s['name']}, {s['cost']} sun, {status}{afford}")
+    if special != "vases":
+        lines.extend(accounting_lines(state, queue))
+    lines.extend(legal_target_lines(state))
+    if state.get("plan_progress"):
+        lines += ["", state["plan_progress"]]
     known = plant_info.describe_plants([s["name"] for s in state["seeds"] if s["name"] not in known_plants],
                                        state.get("level"))
     if known:
@@ -154,7 +192,9 @@ def describe(state, recent, queue=None, known_plants=(), *, compact=False):
     for p in state["plants"]:
         if p["type"] in ("pumpkin", "lily_pad", "flower_pot"):
             stacked.setdefault((p["row"], p["col"]), []).append(p["type"])
-    items = {(i["row"], i["col"]): i["type"] for i in state.get("items", [])}
+    items = {(i["row"], i["col"]):
+             f"vase({i['appearance']})" if i["type"] == "vase" and i.get("appearance") in ("plant", "zombie")
+             else i["type"] for i in state.get("items", [])}
     sleeping = {(p["row"], p["col"]) for p in state["plants"] if p.get("asleep")}
     notes = {}
     for p in state["plants"]:
@@ -213,7 +253,7 @@ def describe(state, recent, queue=None, known_plants=(), *, compact=False):
     if known_z:
         lines.append("What you know about these zombies:")
         lines.extend(known_z)
-    if not special:
+    if not special or special == "vases":
         lines.extend(_row_summary(state, zs))
     if queue:
         lines.append("")
@@ -239,7 +279,7 @@ SYSTEM_PROMPT = """You are playing Plants vs. Zombies. You get the current board
 Give a short reasoning sentence, edit, and up to 5 actions (15 pending maximum).
 
 Actions:
-- plant: put a seed from your seed packets on an empty cell.
+- plant: supply seed as its exact packet NAME (never its slot), plus integer row and col.
 - shovel: remove one of your plants to free its cell (you get no sun back).
 - break_vase: click a vase at the specified row and column in Vasebreaker.
 
@@ -307,6 +347,13 @@ DECISION_SCHEMA = {
     "required": ["reasoning", "edit", "actions"],
     "additionalProperties": False,
 }
+DECISION_SCHEMA["properties"]["actions"]["items"] = action_schema()
+
+
+def decision_schema(names):
+    schema = copy.deepcopy(DECISION_SCHEMA)
+    schema["properties"]["actions"]["items"] = action_schema(names)
+    return schema
 
 
 PICK_SYSTEM = """You are about to play a level of Plants vs. Zombies and must choose your plants.
@@ -335,6 +382,9 @@ PICK_SCHEMA = {
     "required": ["reasoning", "seeds", "plan"],
     "additionalProperties": False,
 }
+PICK_SYSTEM += OBJECTIVES_RULE
+PICK_SCHEMA["properties"]["objectives"] = copy.deepcopy(OBJECTIVES_SCHEMA)
+PICK_SCHEMA["required"].append("objectives")
 
 
 PLAN_SYSTEM = """You are about to play a level of Plants vs. Zombies. The level is starting and this is the
@@ -350,10 +400,15 @@ PLAN_SCHEMA = {
     "required": ["plan"],
     "additionalProperties": False,
 }
+PLAN_SYSTEM += OBJECTIVES_RULE
+PLAN_SCHEMA["properties"]["objectives"] = copy.deepcopy(OBJECTIVES_SCHEMA)
+PLAN_SCHEMA["required"].append("objectives")
 
 
 def pick_prompt(options, slots, zombies, forced=None, terrain="day", level=None):
     lines = [f"Terrain: {terrain}. Choose exactly {slots} plants (list {slots} names)."]
+    if terrain in ("roof", "boss"):
+        lines += [ROOF_RULES]
     if forced:
         lines += [f"Crazy Dave has already locked these into your loadout (you will have them too): "
                   + ", ".join(forced)]
@@ -377,6 +432,7 @@ class Notes:
     notes = ""
     level = None
     plan = None
+    objectives = ()
     plan_effort = None     # effort for the few strategic calls: pick + plan, plan, reflection
     knowledge = ""         # this level's plant facts, sent once in the (cached) system prompt
     known_plants = ()      # ...so the boards can leave them out
@@ -402,12 +458,14 @@ class Notes:
                           pick_prompt(options, slots, zombies, forced, terrain, self.level),
                           PICK_SCHEMA, effort=self.plan_effort)
         self.plan = (answer.get("plan") or "").strip() or None
+        self.objectives = answer.get("objectives", [])
         return answer
 
     def write_plan(self, state):
         answer = self.ask(self.system(PLAN_SYSTEM), describe(state, []), PLAN_SCHEMA,
                           effort=self.plan_effort)
         self.plan = (answer.get("plan") or "").strip() or None
+        self.objectives = answer.get("objectives", [])
         return self.plan
 
 
@@ -446,7 +504,8 @@ class ClaudeBrain(Notes):
     def decide(self, state, recent, queue=None):
         self.last_usage = None
         board = describe(state, recent, queue, self.known_plants, compact=True)
-        decision = self.ask(self.system(SYSTEM_PROMPT), board, DECISION_SCHEMA)
+        decision = self.ask(self.system(SYSTEM_PROMPT), board,
+                            decision_schema([s["name"] for s in state["seeds"] if not s["name"].startswith("unknown")]))
         decision["_prompt"] = board
         return decision
 
@@ -500,6 +559,8 @@ class ClaudeCodeBrain(Notes):
         self._turns = 0
         import threading
         self._lock = threading.Lock()
+        self._cancelled = threading.Event()
+        self._one_shot = None
         import atexit
         atexit.register(self.close)
 
@@ -521,11 +582,16 @@ class ClaudeCodeBrain(Notes):
     # ---- persistent decision process ------------------------------------------------
     def _start(self):
         import subprocess, threading, queue
-        cmd = self._base_cmd(self.system(SYSTEM_PROMPT) + PERSISTENT_NOTE, DECISION_SCHEMA)
+        self._check_cancelled()
+        schema = decision_schema(self.known_plants) if self.known_plants else DECISION_SCHEMA
+        cmd = self._base_cmd(self.system(SYSTEM_PROMPT) + PERSISTENT_NOTE, schema)
         cmd += ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
         self._proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                       stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
                                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if self._cancelled.is_set():
+            self.cancel()
+            self._check_cancelled()
         self._lines = queue.Queue()
         proc, lines = self._proc, self._lines
 
@@ -535,6 +601,20 @@ class ClaudeCodeBrain(Notes):
             lines.put(None)
         threading.Thread(target=pump, daemon=True).start()
         self._turns = 0
+
+    def _check_cancelled(self):
+        if self._cancelled.is_set():
+            raise RuntimeError("player call canceled by stop request")
+
+    def cancel(self):
+        """Unblock an in-flight call without waiting for the conversation lock."""
+        self._cancelled.set()
+        for proc in (self._proc, self._one_shot):
+            if proc and proc.poll() is None:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass  # already exited
 
     def close(self):
         proc, self._proc = self._proc, None
@@ -557,6 +637,7 @@ class ClaudeCodeBrain(Notes):
     def _ask_persistent(self, user):
         import queue
         with self._lock:
+            self._check_cancelled()
             if self._proc is None or self._proc.poll() is not None or self._turns >= self.max_turns:
                 self.close()
                 self._start()
@@ -597,7 +678,8 @@ class ClaudeCodeBrain(Notes):
         if self.persistent:
             decision = self._ask_persistent(board)
         else:
-            decision = self.ask(self.system(SYSTEM_PROMPT), board, DECISION_SCHEMA)
+            decision = self.ask(self.system(SYSTEM_PROMPT), board,
+                                decision_schema([s["name"] for s in state["seeds"] if not s["name"].startswith("unknown")]))
         decision["_prompt"] = board
         return decision
 
@@ -614,15 +696,28 @@ class ClaudeCodeBrain(Notes):
     def ask(self, system, user, schema, effort=None):
         """One-shot call (new process)."""
         import subprocess
+        self._check_cancelled()
         self.last_usage = None
         cmd = self._base_cmd(system, schema, effort) + ["--output-format", "json"]
-        proc = subprocess.run(cmd, input=user, capture_output=True, text=True,
-                              encoding="utf-8", timeout=self.timeout,
-                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, encoding="utf-8",
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        self._one_shot = proc
         try:
-            data = json.loads(proc.stdout)
+            if self._cancelled.is_set():
+                self.cancel()
+            stdout, stderr = proc.communicate(input=user, timeout=self.timeout)
+        except BaseException:
+            proc.kill()
+            proc.communicate()
+            raise
+        finally:
+            self._one_shot = None
+        self._check_cancelled()
+        try:
+            data = json.loads(stdout)
         except json.JSONDecodeError:
-            raise RuntimeError(f"claude exited {proc.returncode}: {proc.stderr.strip()[:300] or proc.stdout[:300]}")
+            raise RuntimeError(f"claude exited {proc.returncode}: {stderr.strip()[:300] or stdout[:300]}")
         return self._parse(data)
 
 

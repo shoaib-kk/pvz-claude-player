@@ -44,13 +44,29 @@ class PromptTests(unittest.TestCase):
     def test_shooting_direction_is_a_stated_rule(self):
         self.assertIn("fire toward the street (higher columns) only", brains.SYSTEM_PROMPT)
 
-    def test_row_summary_counts_attackers_that_can_reach_the_closest_zombie(self):
+    def test_row_summary_counts_direction_without_claiming_reach(self):
         s = board()
         plant(s, "peashooter", 4, 1)
         plant(s, "peashooter", 4, 7)            # behind the zombie at col 4
         s["zombies"] = [{"type": "conehead", "row": 4, "x": 380, "hp": 270, "armor_hp": 370}]
         out = brains.describe(s, [], compact=True)
-        self.assertIn("row 4: 2 attackers (1 can hit the closest zombie)", out)
+        self.assertIn("row 4: 2 attackers (1 with the closest zombie in their firing direction)", out)
+        self.assertIn("firing direction does not establish reach", out)
+        self.assertNotIn("can hit the closest zombie", out)
+
+    def test_roof_obstruction_is_known_before_picking_and_during_play(self):
+        for terrain in ("roof", "boss"):
+            with self.subTest(terrain=terrain):
+                s = board(terrain)
+                plant(s, "peashooter", 0, 1)
+                s["zombies"] = [{"type": "zombie", "row": 0, "x": 650, "hp": 270, "armor_hp": 0}]
+                pick = brains.pick_prompt([], 0, {}, terrain=terrain)
+                play = brains.describe(s, [], compact=True)
+                for text in (pick, play):
+                    self.assertIn("A peashooter on the slope therefore cannot cover the whole row", text)
+                    self.assertIn("Lobbed projectiles clear the roof slope", text)
+                self.assertNotIn("can hit the closest zombie", play)
+        self.assertNotIn(brains.ROOF_RULES, brains.pick_prompt([], 0, {}, terrain="day"))
 
     def test_zombies_are_drawn_in_the_lawn_grid(self):
         s = board()
@@ -165,7 +181,7 @@ class JournalTests(unittest.TestCase):
         rec.observe(board([(0, 3, "puff_shroom"), (1, 2, "fume_shroom")], seeds))
         report = rec.report()
         self.assertIn("puff_shroom x1 (0 sun each)", report)
-        self.assertIn("Sun value of plants destroyed: 0", report)
+        self.assertIn("Replacement value of disappeared plants: 0 (NOT cash spent", report)
         self.assertEqual(rec.facts()["plants_placed"], 3)
         self.assertEqual(rec.facts()["wave"], [3, 10])
 
@@ -179,7 +195,7 @@ class JournalTests(unittest.TestCase):
             j.reflect(brain, "4-1", "lost", "r")
             self.assertNotIn("earlier attempts", brain.prompts[0])
             self.assertIn("lost at wave 10 of 10; loadout puff_shroom; plants placed 39; "
-                          "sun value of plants destroyed 0", brain.prompts[2])
+                          "replacement value of disappeared plants 0 (not spending)", brain.prompts[2])
             self.assertNotIn("loadout peashooter", brain.prompts[2])
 
     def test_report_lists_plants_left_out_of_the_loadout(self):

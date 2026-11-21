@@ -191,6 +191,14 @@ class GeometryAndReaderTests(unittest.TestCase):
         reader._int = Mock(side_effect=read_int)
         self.assertEqual(reader.chooser_layout(), (163, 73))
 
+    def test_chooser_waits_for_hidden_bank_before_reading_cards(self):
+        import seed_select
+        ctl = Mock()
+        ctl.seed_center.side_effect = [(110, -44), (110, 10), (110, 43)]
+        with patch("seed_select.in_chooser", return_value=True), patch("seed_select.time.sleep"):
+            seed_select.wait_for_bank(ctl)
+        self.assertEqual(ctl.seed_center.call_count, 3)
+
     def test_pool_and_roof_geometry(self):
         self.assertEqual(Controller.cell_center(0, 0), (80, 130))
         self.assertEqual(Controller.cell_center(5, 8, "pool"), (720, 547))
@@ -452,6 +460,31 @@ class LoopTests(unittest.TestCase):
         op.restart = False
         op.play_levels()
         self.assertFalse(op.get_to_playing.call_args.kwargs["retry"])
+
+    def test_attempt_limit_counts_wins_and_retries_before_next_navigation(self):
+        op = operator()
+        op.levels = 50
+        op.retries = 2
+        op.max_attempts = 3
+        op.get_to_playing = Mock(return_value=True)
+        op.reader.level_info.side_effect = [
+            {"level": n, "special": None, "terrain": "roof"} for n in (42, 43, 43)
+        ]
+        op.play = Mock(side_effect=["won", "lost", "won"])
+        self.assertEqual(op.play_levels(), ("max_attempts", 2))
+        self.assertEqual(op.play.call_count, 3)
+        self.assertEqual(op.get_to_playing.call_count, 3)
+
+    def test_three_losses_do_not_start_a_fourth_attempt(self):
+        op = operator()
+        op.levels = 50
+        op.retries = 2
+        op.max_attempts = 3
+        op.get_to_playing = Mock(return_value=True)
+        op.reader.level_info.return_value = {"level": 42, "special": None, "terrain": "roof"}
+        op.play = Mock(return_value="lost")
+        self.assertEqual(op.play_levels(), ("lost", 0))
+        self.assertEqual(op.get_to_playing.call_count, 3)
 
     def test_campaign_stops_at_boss_or_exhausted_retries(self):
         op = operator()

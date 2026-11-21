@@ -15,6 +15,8 @@ from pathlib import Path
 
 from plant_info import POTATO_MINE_ARM_SECONDS
 from sun_accounting import MECHANICS_AND_EVIDENCE, verified_costs
+from purchase_accounting import PurchaseLedger
+from plan_progress import PlanProgress
 
 SHOOTERS = {"peashooter", "snow_pea", "repeater", "gatling_pea", "threepeater", "split_pea",
             "cactus", "starfruit", "puff_shroom", "scaredy_shroom", "fume_shroom", "gloom_shroom",
@@ -117,15 +119,15 @@ class Journal:
         """The first time a situation with a related parent comes up (fog is a night level), start
         its section from a copy of the parent's lessons, followed by any lessons it already had."""
         parent = SEED_FROM.get(situation)
-        seeded = self.data.setdefault("seeded", [])
+        seeded = self.data.get("seeded", [])
         if not parent or situation in seeded or not self.section(parent):
             return
         merged = list(dict.fromkeys(self.section(parent) + self.section(situation)))[:MAX_SITUATION]
         self.data["sections"][situation] = merged
-        seeded.append(situation)
+        self.data.setdefault("seeded", []).append(situation)
         self.save()
 
-    def prompt_block(self, situation=None):
+    def prompt_block(self, situation=None, level_label=None):
         """Text appended to the player's system prompts."""
         self.seed_section(situation)
         general, special = self.lessons, self.section(situation)
@@ -142,7 +144,34 @@ class Journal:
                          if h.get("situation") == situation and h.get("next_attempt")), None)
         if previous:
             text += "\nYour experiment for the next attempt: " + previous["next_attempt"]
+        if level_label:
+            text += self.selection_history(level_label)
         return text
+
+    def selection_history(self, level_label):
+        """Keep the furthest recorded result plus recent results visible before a pick."""
+        history = [h for h in self.data.get("history", []) if h.get("level") == level_label]
+        if not history:
+            return ""
+        def score(h):
+            facts = h.get("attempt_facts") or facts_from_evidence(h.get("evidence")) or {}
+            return h.get("outcome") == "won", (facts.get("wave") or [0])[0]
+        best = max(range(len(history)), key=lambda i: score(history[i]))
+        chosen = sorted({best, *range(max(0, len(history) - 2), len(history))})
+        lines = [f"\nRecorded outcomes at level {level_label} (observations, not proven strategies; "
+                 "starting conditions and other choices can differ):"]
+        for index in chosen:
+            h = history[index]
+            f = h.get("attempt_facts") or facts_from_evidence(h.get("evidence")) or {}
+            w = f.get("wave") or [0, 0]
+            counts = f.get("planted") or ((h.get("evidence") or {}).get("s0") or {}).get("planted")
+            accounting = f.get("accounting") or {}
+            mowers = accounting.get("initial_mowers")
+            lines.append(f"  {h.get('t', '?')}: {h.get('outcome', '?')} wave {w[0]}/{w[1]}; "
+                         f"loadout {', '.join(f.get('loadout', [])) or 'not recorded'}; "
+                         f"completed plantings {counts if counts is not None else 'not recorded'}; "
+                         f"starting cleaners {sum(mowers) if mowers is not None else 'not recorded'}.")
+        return "\n".join(lines)
 
     def earlier_attempts(self, level_label, limit=12):
         """One factual line per earlier finished attempt at this level, oldest first."""
@@ -158,8 +187,11 @@ class Journal:
                 parts.append("loadout " + ", ".join(f["loadout"]))
             if f.get("plants_placed") is not None:
                 parts.append(f"plants placed {f['plants_placed']}")
-            if f.get("sun_lost") is not None:
-                parts.append(f"sun value of plants destroyed {f['sun_lost']}")
+            replacement = f.get("replacement_value_disappeared", f.get("sun_lost"))
+            if replacement is not None:
+                parts.append(f"replacement value of disappeared plants {replacement} (not spending)")
+            if f.get("accounting"):
+                parts.append(f"packet spending {f['accounting']['packet_sun_spent']}")
             if f.get("stalled_unspent_sun_seconds") is not None:
                 parts.append(f"queue stalled with unspent sun {f['stalled_unspent_sun_seconds']:.0f}s")
             lines.append("  - " + "; ".join(parts))
@@ -281,7 +313,7 @@ MAYBE_USED = {"potato_mine"}     # exploded, or eaten while still arming - indis
 class LevelRecorder:
     """Factual timeline of one level, built from the boards sent to the player."""
 
-    def __init__(self, level_label, loadout=None, options=None):
+    def __init__(self, level_label, loadout=None, options=None, objectives=None):
         self.level_label = level_label
         self.loadout = list(loadout or [])
         self.options = list(options or [])   # every plant the chooser offered
@@ -293,6 +325,18 @@ class LevelRecorder:
         self.mower_wave = {}
         self.planted = {}
         self.placed = 0           # plants that appeared on the lawn, replants included
+        self.purchases = PurchaseLedger()
+        self.progress = PlanProgress(objectives)
+
+    def record_action(self, action, packet, before, after=None):
+        """Called only for confirmed execution, not proposals or rejected orders."""
+        if action["type"] == "plant":
+            self.purchases.purchased(action, packet, before)
+            self.progress.purchased(action, after if after is not None else before)
+            if after is not None:
+                self.purchases.observe(after)
+        elif action["type"] == "shovel":
+            self.purchases.shoveled(action, before, after)
 
     def costs(self):
         return verified_costs(self.last)
@@ -309,11 +353,14 @@ class LevelRecorder:
             return None
         return {"loadout": self.loadout or [s["name"] for s in self.last.get("seeds", [])],
                 "wave": list(self.last.get("wave", [0, 0])), "plants_placed": self.placed,
-                "sun_lost": self.sun_lost()}
+                "replacement_value_disappeared": self.purchases.metrics()["replacement_value_disappeared"],
+                "accounting": self.purchases.metrics(),
+                "objectives": self.progress.status(self.last)}
 
     def observe(self, state):
         if not state or not state.get("in_level"):
             return
+        self.purchases.observe(state)
         wave = state.get("wave", [0, 0])[0]
         if self.last is not None:
             before = {(p["row"], p["col"], p["type"]) for p in self.last["plants"]}
@@ -361,7 +408,7 @@ class LevelRecorder:
         row = z["row"]
         attackers = sum(1 for p in self.last["plants"] if p["row"] == row and p["type"] in SHOOTERS)
         mower = (f"its mower had fired in wave {self.mower_wave[row]}" if row in self.mower_wave
-                 else "its mower had already been used" if not self.last["mowers"][row] else "it still had a mower")
+                 else "no mower was available (no firing observed)" if not self.last["mowers"][row] else "it still had a mower")
         return (f"How it ended: the zombie closest to the house was a {z['type']} in row {row}; "
                 f"{mower}, and the row had {attackers} attackers left.")
 
@@ -381,16 +428,21 @@ class LevelRecorder:
             costs = self.costs()
             def cost(k):
                 return f"{costs[k]} sun each" if costs.get(k) is not None else "cost unknown"
-            lines.append("Plants destroyed by zombies: " + ", ".join(
+            lines.append("Plants no longer observed (cause unverified): " + ", ".join(
                 f"{k} x{v} ({cost(k)})" for k, v in self.lost_count.items()))
-            if (lost := self.sun_lost()) is not None:
-                lines.append(f"Sun value of plants destroyed: {lost}")
+            if (lost := self.purchases.metrics()["replacement_value_disappeared"]) is not None:
+                lines.append(f"Replacement value of disappeared plants: {lost} (NOT cash spent; includes free starting plants)")
         if self.used_count:
             lines.append("One-use plants used: " + ", ".join(f"{k} x{v}" for k, v in self.used_count.items()))
         lines.append("Timeline:")
         lines += [f"  [t{i + 1}] {e}" for i, e in list(enumerate(self.events))[-40:]] or ["  (no plants lost, no mowers used)"]
         if outcome == "lost" and (end := self.ending()):
             lines += ["", end]
+        if self.purchases.initialized:
+            lines += ["", "[a0] " + self.purchases.report()]
+        progress = self.progress.report(self.last or {})
+        if progress:
+            lines += ["", "[p0] " + progress]
         if final_board_text:
             lines += ["", "Last board you saw:", final_board_text]
         return "\n".join(lines)
