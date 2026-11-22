@@ -7,6 +7,7 @@ UPGRADES = {"gatling_pea": "repeater", "twin_sunflower": "sunflower", "gloom_shr
 AQUATIC = {"lily_pad", "sea_shroom", "tangle_kelp"}
 SUPPORTS = {"lily_pad", "flower_pot"}
 BOWLING_SEEDS = {"wall_nut", "explode_o_nut", "giant_wall_nut"}
+NEEDS_GROUND = {"spikeweed", "spikerock", "potato_mine"}  # never on a Lily Pad or Flower Pot
 ACTION_TYPES = {"plant", "shovel", "break_vase"}
 
 
@@ -78,7 +79,7 @@ def validate(action, state):
                               f"then {name} at ({row},{col}) once the pad is there"), None
         elif state.get("terrain") in ("roof", "boss") and "flower_pot" not in plants:
             return "reject", "plant a Flower Pot here first", None
-        elif name in {"spikeweed", "spikerock", "potato_mine"} and plants.keys() & SUPPORTS:
+        elif name in NEEDS_GROUND and plants.keys() & SUPPORTS:
             return "reject", f"{name} can't go on a Lily Pad or Flower Pot; it needs solid ground", None
         elif name == "pumpkin":
             if "pumpkin" in plants or occupant == "cob_cannon":

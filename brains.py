@@ -21,6 +21,7 @@ from sun_accounting import MECHANICS_AND_EVIDENCE, accounting_lines
 from placement import legal_target_lines
 from action_contract import action_schema
 from plan_progress import OBJECTIVES_SCHEMA, OBJECTIVES_RULE
+from feedback import feedback_lines
 
 # ---------------------------------------------------------------------------
 # Turning game state into text a model can read
@@ -44,7 +45,11 @@ ROOF_RULES = (
     "Plants need a Flower Pot first. Peas and other straight projectiles fired from the sloped "
     "back of the roof hit the roof before reaching zombies farther toward the street. "
     "A peashooter on the slope therefore cannot cover the whole row; it may hit only nearby "
-    "zombies before they pass it. Lobbed projectiles clear the roof slope."
+    "zombies before they pass it. Lobbed projectiles clear the roof slope. "
+    "Potato Mine, Spikeweed and Spikerock need bare ground, so they cannot be planted on the roof. "
+    "If you order a plant on an empty roof cell and have a flower_pot packet, a Flower Pot is "
+    "queued in that cell right before it, in the same group; the same happens if the pot is eaten "
+    "while the plant is still waiting in your queue."
 )
 
 
@@ -79,9 +84,12 @@ def _row_summary(state, zombies):
         if cols:
             closest = min(cols)
             facing = sum(in_firing_direction(p, c, closest) for c, p in attackers)
+            passed = sorted({c for c, p in attackers if p not in NOT_FORWARD_ONLY and c > closest})
+            relation = (f"; closest zombie has passed forward shooters at cols {','.join(map(str, passed))}"
+                        if passed else "")
             out.append(f"  row {r}: {len(attackers)} attackers ({facing} with the closest zombie "
                        f"in their firing direction), "
-                       f"{mower}, {len(cols)} zombies, closest at col {closest}")
+                       f"{mower}, {len(cols)} zombies, closest at col {closest}{relation}")
         else:
             out.append(f"  row {r}: {len(attackers)} attackers, {mower}, no zombies")
     return out
@@ -264,10 +272,7 @@ def describe(state, recent, queue=None, known_plants=(), *, compact=False):
             lines.append(f"  #{a.get('id', '?')} {action_text(a)}, {policy}{group}")
     if state.get("execution"):
         lines += ["", state["execution"]]
-    if recent:
-        lines.append("")
-        lines.append("Results of your recent actions, and things that happened:")
-        lines.extend(f"  {r}" for r in dict.fromkeys(recent[-8:]))
+    lines.extend(feedback_lines(recent, state.get("feedback_omitted", 0)))
     return "\n".join(lines)
 
 
@@ -544,7 +549,7 @@ class ClaudeCodeBrain(Notes):
     the context stays small. Seed picks (once per level) use a one-shot call."""
     name = "subscription"
 
-    def __init__(self, model=None, effort="medium", timeout=180, persistent=True, max_turns=3):
+    def __init__(self, model="sonnet", effort="low", timeout=180, persistent=True, max_turns=3):
         if max_turns < 1:
             raise ValueError("PVZ_TURNS_PER_PROCESS must be at least 1")
         self.exe = find_claude_exe()
@@ -818,8 +823,8 @@ def make_brain(name):
         brain.plan_effort = os.environ.get("PVZ_PLAN_EFFORT", effort)
         return brain
     if name == "subscription":
-        brain = ClaudeCodeBrain(model=os.environ.get("PVZ_MODEL") or None,
-                                effort=os.environ.get("PVZ_EFFORT", "medium"),
+        brain = ClaudeCodeBrain(model=os.environ.get("PVZ_MODEL") or "sonnet",
+                                effort=os.environ.get("PVZ_EFFORT", "low"),
                                 persistent=os.environ.get("PVZ_PERSISTENT", "1") != "0",
                                 max_turns=int(os.environ.get("PVZ_TURNS_PER_PROCESS", "3")))
         brain.plan_effort = os.environ.get("PVZ_PLAN_EFFORT", brain.effort)

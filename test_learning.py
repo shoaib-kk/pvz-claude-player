@@ -98,7 +98,8 @@ class PromptTests(unittest.TestCase):
         op.planted_since_ask = 0
         with patch.object(op, "snapshot", return_value=s), patch.object(op, "perform", return_value=True):
             op.work_queue()
-        self.assertTrue(any("planted behind every zombie in row 2" in r for r in op.recent))
+        self.assertTrue(any("every current zombie in row 2 has already passed it toward the house" in r
+                            for r in op.recent))
 
     def test_plant_knowledge_is_staged_by_almanac_unlock(self):
         s = board(terrain="night")

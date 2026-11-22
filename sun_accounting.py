@@ -14,6 +14,8 @@ Mechanics and evidence take precedence over your journal and your earlier plans:
   argument. Assess other tradeoffs separately; zero sun cost does not guarantee a useful placement.
 - A plant disappearing or being eaten does not establish that it dealt no damage or bought no
   time. Use measured evidence when available; otherwise those contributions are unknown.
+- A one-use plant disappearing does not prove it activated or damaged a zombie; it may have
+  been destroyed first. Older timeline wording such as 'used up' is not proof of an effect.
 - Replacement value of a missing plant is not sun spent. Plants supplied at the start cost you
   zero sun; confirmed packet purchases have their own spending ledger. Do not charge free
   starting plants to your economy or infer a cash shortfall from replacement value.

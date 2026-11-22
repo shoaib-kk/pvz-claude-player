@@ -1,0 +1,113 @@
+Three live tests with fresh feedback - 21 November 2026
+
+Result
+======
+Completed exactly three gameplay attempts, all on Adventure 5-2, using:
+PVZ_MODEL=haiku, PVZ_EFFORT=low, PVZ_PLAN_EFFORT=low
+agent.py --campaign --retries 2 --max-attempts 3
+
+Attempt  Outcome  Reached wave  Duration  Decisions  OK  Rejected  Failed clicks
+1        lost       9/20        4m11s        32     30      8           1
+2        lost      20/20        9m32s        72     61      4           0
+3        lost      20/20        9m32s        70     71      5           0
+
+The recorder may observe a later wave than the last decision snapshot; attempt
+1's last decision was wave 8 and its final recorder board reached wave 9.
+All three Game Over screenshots were visually checked. A final live screenshot
+confirmed zombies_won, and no agent.py process remained. No fourth attempt
+started. The game was already lost at startup, so no live progress was discarded.
+
+All attempts began with 20 supplied flower pots and five roof cleaners. The
+code stayed unchanged throughout the batch. The player updated its own journal
+between attempts; the operator did not rewrite or inject strategy. Its starting
+journal was saved in logs/world5_before_fresh_feedback_tests_2026-11-21.json.
+
+Comparison with the previous live batch
+======================================
+Previous batch: losses at waves 11, 20, 12; 150 decisions.
+Current batch:  losses at waves 9, 20, 20; 174 decisions.
+Two current attempts reached the final wave instead of one previously, but both
+batches produced zero wins. This small, uncontrolled sequence does not establish
+a reliable playing-strength gain. The journal advanced, loadouts and decisions
+changed, and multiple observer/accounting improvements entered this batch.
+
+Observed implementation behavior
+================================
+Feedback event IDs were unique across accepted decisions within each attempt:
+41/41, 70/70 and 81/81 unique. There were 37 empty feedback batches and zero
+omitted events. No repeated old event IDs were found within an attempt.
+Measured objectives appeared on decision boards with completion/deadline state.
+Actual purchase spending was separated from initial pots and replacement value:
+
+Attempt  Confirmed spending  Replacement value missing  Paid spending later missing
+1            1700                    1700                         1200
+2            3625                    2525                         2125
+3            4300                    3125                         2800
+
+These figures have different meanings; matching numbers in attempt 1 are
+coincidental. Disappearance cause/contribution is unverified and consumables
+are accounted separately. There were no recorded read, planning, reflection or
+screenshot errors. One placement failed in attempt 1; placements immediately
+before and after it worked. The log does not establish whether the target
+became invalid during the click, so do not attribute it to focus loss as fact.
+
+What still went wrong
+====================
+1. The player repeatedly bought extra pots at 25 sun while waiting to afford
+   sustained attackers, and sometimes delayed its first attacker substantially.
+2. It continued proposing attackers on the street side of zombies that had
+   already passed them. In attempt 3, decision 150 put cabbage at (2,7) with the
+   lead buckethead already near col 6; decision 151 recognized the limitation.
+3. Some targets lost their pots during 4-18 seconds of model thinking. Median
+   decision times were 5.33s, 5.41s and 5.30s; maxima 13.87s, 18.07s and 14.27s.
+4. Emergency resources were poorly timed. Attempt 2 selected Cherry Bomb but
+   never planted one. Attempt 3 planted one at wave 19, after substantial lane
+   damage. Attempt 3 also selected Jalapeno but never planted it. Both
+   final-wave losses broke row 0 with no live attacker.
+5. The player made explicit cost-reading errors despite correct input:
+   decision 36 called a pot "0 net after collection" and decision 123 called
+   it "0-sun". Both snapshots list pot cost 25 and the arithmetic line is
+   "flower_pot: 25-25=0 sun". The zero is the remaining balance, not its price.
+   Spelling out "cost 25; balance after purchase 0" is a candidate future
+   presentation fix, not something changed during these tests.
+6. Objective labels sometimes overstate what their counters measure. For
+   example, "Pot the pole-vault lane" specified only a pot count, no row;
+   its met status establishes that count, not protection of the actual lane.
+
+Usage
+=====
+Reported tokens across decisions, unused decisions, picks and reflections:
+
+                     Previous batch    Current batch
+Input, no cache                332              370
+Cache creation              406423           544338
+Cache reads                 888295          1278523
+All input categories       1295050          1823231
+Output                      120950           144677
+
+Total input including cache rose about 41%; output rose about 20%. There were
+174 rather than 150 decisions, and selection/journal/objective context changed.
+These are reported token counts, not subscription charges or monetary prices.
+Most input was cache reads. The additions did not produce a lower-usage full
+batch compared with the older live batch.
+
+Separately, formatting these same 174 current boards with the pushed checkpoint
+and new descriptions produced 747946 versus 718657 characters, a 3.92% board-text
+reduction. This isolates formatting size, not total request usage or gameplay.
+
+Assessment
+==========
+Feedback freshness and accounting worked in the live run, but the player still
+failed all three attempts. Two final-wave losses are promising observations,
+not evidence of a reliable win-rate improvement. The next useful check is a
+bounded reasoning/presentation comparison on recorded mistakes (cost versus
+remaining balance, forward direction, and emergency timing), preserving the
+same board and journal context. No further model calls or live attempts were
+made after the requested third result.
+
+Artifacts
+=========
+logs/run_2026-11-21_19-38-43_subscription.jsonl
+logs/fresh_feedback_three_tests_audit.json
+logs/fresh_feedback_live_prompt_comparison.json
+Result PNGs share the run log prefix and level_42_lost suffix.

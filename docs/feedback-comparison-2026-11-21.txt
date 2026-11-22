@@ -1,0 +1,93 @@
+Observation freshness comparison - 21 November 2026
+
+Checkpoint
+==========
+Committed and pushed the existing project as:
+9a07cf651763d0228453fe8071910e62b20ff252
+https://github.com/shoaib-kk/pvz-claude-player/commit/9a07cf651763d0228453fe8071910e62b20ff252
+The new changes below are local working-tree changes on top of that checkpoint.
+
+New behavior
+============
+Feedback is timestamped at observation and sent until a decision is accepted.
+A request captures an event watermark; acknowledging that reply cannot swallow
+events arriving while the player thinks. Player errors or rejected queue edits
+do not acknowledge their input. Batches are bounded to eight items, with a count
+of omitted older new events. The full current board and queue remain in every
+request, including after a player-process reset. The legacy recent list remains
+available for inspection but is no longer resent as live decision feedback.
+
+Row summaries directly state when the closest zombie has passed forward-only
+shooters. Backward/multidirectional shooters are excluded from that statement.
+This describes relative position, not guaranteed projectile reach, damage,
+or which move should be chosen. No automatic defensive move was added.
+
+Replay support
+==============
+replay_decisions.py --compare-to COMMIT loads the formatter from that Git
+checkpoint without checking it out or replacing workspace files. Current and
+baseline prompts use the same recorded board, queue, loadout knowledge and
+historical journal context. Future reflections are excluded.
+
+Old feedback ages are reconstructed from logged event times and estimated
+request times, so they carry a ~ marker. New runs log the captured feedback
+batch and watermark, allowing exact reuse of what was shown. A replay regression
+also covers pending queues: parsing a queue must not overwrite its parent
+decision record. This bug was found while expanding the comparison to all boards.
+
+Validation
+==========
+147 offline regression tests passed via:
+.venv\Scripts\python.exe -m unittest discover -q
+git diff --check passed.
+
+Freshness tests cover acknowledgement boundaries, events arriving during calls,
+error retries, increasing event age, bounded overflow, repeated same-text events,
+old-watermark handling, live-agent queue acceptance, multidirectional shooters,
+and replay reconstruction without future-event leakage.
+
+All 150 boards from logs/run_2026-11-21_11-42-51_subscription.jsonl were compared:
+Checkpoint board text: 551250 characters total.
+New board text:        524422 characters total.
+Saved:                 26828 characters (4.87%).
+Median saving per board: 157 characters.
+10 prompts grew; the largest increase was 75 characters.
+These are character counts for board text, not total token use or money.
+Artifact: logs/feedback_all_boards_comparison.json
+
+Bounded paired player check
+==========================
+Four Haiku/low calls: decisions 84 and 108, once each with checkpoint and new
+observations. Each was an independent call with the same prior journal/plan;
+there were no clicks or live-game reads.
+
+Decision 84:
+  Checkpoint chose Squash at (0,2); placement validator returned OK.
+  New description chose Squash at (0,2); placement validator returned OK.
+  Reported input tokens: 6741 checkpoint, 6696 new.
+
+Decision 108:
+  Checkpoint chose Cabbage-pult at (0,0); placement validator returned OK.
+  New description chose Tall-nut at (0,0); placement validator returned OK.
+  Reported input tokens: 6408 checkpoint, 6276 new.
+
+Input totals include ordinary input, cache creation and cache reads:
+13149 checkpoint versus 12972 new (177 fewer, 1.35%). The new description adds
+no extra call during gameplay. Output lengths and response times also varied,
+but this sample is too small to infer a systematic speed or output-token gain.
+Artifact: logs/feedback_paired_haiku_low.json
+
+Interpretation
+==============
+Both versions produced legal placements in both paired cases. There is no
+demonstrated playing-strength or win-rate advantage from these two samples.
+The wider replay shows a modest reduction in board-text size, while unit tests
+verify that old feedback is not repeated after acceptance and in-flight events
+are preserved. Placement legality does not simulate damage or prove a save.
+
+Run a comparison without player usage or game input:
+.venv\Scripts\python.exe replay_decisions.py logs\run_2026-11-21_11-42-51_subscription.jsonl --decisions 84 107 108 --compare-to 9a07cf6 --output logs\comparison.json
+
+Add --player for two Haiku/low calls per board. Keep the board set bounded when
+using that option. A live performance comparison would need matching initial
+game conditions and journal snapshots; no new live game was run for this change.

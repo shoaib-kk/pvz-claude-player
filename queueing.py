@@ -2,6 +2,7 @@
 import copy
 from action_contract import check_action
 from execution import action_key, clean_action
+from placement import NEEDS_GROUND
 
 
 TERMINAL = {"completed", "rejected", "failed", "canceled", "unfinished"}
@@ -48,6 +49,7 @@ def edit_queue(queue, decision, tracker, number, live_state=None):
             r = tracker.actions.get(a["id"])
             if r is None or action_key(a) != action_key(r["action"]):
                 raise ValueError("existing action IDs cannot change their move; cancel and issue a new action")
+    incoming = auto_pot(incoming, queue if mode == "append" else [], live_state)
     if mode == "keep":
         tracker.event("queue_edit", edit=mode, decision=number)
         return list(queue)
@@ -99,6 +101,71 @@ def edit_queue(queue, decision, tracker, number, live_state=None):
             if old["id"] not in retained:
                 tracker.finish(old, "canceled", f"player replaced in decision {number}")
     tracker.event("queue_edit", edit=mode, decision=number, queued=[a["id"] for a in result])
+    return result
+
+
+def auto_pot(incoming, pending, state):
+    """On the roof, put a Flower Pot right before a plant ordered on an unpotted cell.
+
+    A UI convenience for a rule the player is told, not a placement choice: the
+    cell and the plant stay the player's. The pot joins the plant's group (or a new
+    ordered group) so the pair is reserved and executed together.
+    """
+    if not state or state.get("terrain") not in ("roof", "boss"):
+        return incoming
+    if not any(s["name"] == "flower_pot" for s in state.get("seeds", [])):
+        return incoming
+    potted = {(p["row"], p["col"]) for p in state.get("plants", []) if p["type"] == "flower_pot"}
+    potted |= {(a["row"], a["col"]) for a in pending
+               if a.get("type") == "plant" and a.get("seed") == "flower_pot"}
+    taken = {a.get("group", 0) for a in incoming}
+    next_group = max(taken | {0}) + 1
+    result = []
+    for a in incoming:
+        cell = (a.get("row"), a.get("col"))
+        if a.get("type") == "plant" and a.get("seed") == "flower_pot":
+            potted.add(cell)
+        elif (a.get("type") == "plant" and "id" not in a and cell not in potted
+                and a.get("seed") not in NEEDS_GROUND):
+            if not a.get("group"):
+                a = {**a, "group": next_group, "independent": False}
+                next_group += 1
+            pot = {"type": "plant", "seed": "flower_pot", "row": cell[0], "col": cell[1],
+                   "group": a["group"]}
+            if "independent" in a:
+                pot["independent"] = a["independent"]
+            result.append(pot)
+            potted.add(cell)
+        result.append(a)
+    return result
+
+
+def repot(queue, state, issue):
+    """Re-pot queued roof plants whose pot was eaten after they were ordered.
+
+    `issue(action)` returns the tracked pot action. The pot joins the plant's unit
+    so the pair is reserved and executed in order. Returns the new queue.
+    """
+    if not state or state.get("terrain") not in ("roof", "boss"):
+        return queue
+    if not any(s["name"] == "flower_pot" for s in state.get("seeds", [])):
+        return queue
+    potted = {(p["row"], p["col"]) for p in state.get("plants", []) if p["type"] == "flower_pot"}
+    result = []
+    for a in queue:
+        cell = (a.get("row"), a.get("col"))
+        if a.get("type") == "plant" and a.get("seed") == "flower_pot":
+            potted.add(cell)
+        elif (a.get("type") == "plant" and cell not in potted and a.get("seed") not in NEEDS_GROUND
+                and state["grid"][cell[0]][cell[1]] is None):
+            if not a.get("_group"):
+                a["_group"] = f"repot:{a.get('id')}"
+            pot = issue({"type": "plant", "seed": "flower_pot", "row": cell[0], "col": cell[1],
+                         **({"independent": a["independent"]} if "independent" in a else {})})
+            pot["_group"] = a["_group"]
+            result.append(pot)
+            potted.add(cell)
+        result.append(a)
     return result
 
 

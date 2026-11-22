@@ -42,7 +42,8 @@ from journal import Journal, LevelRecorder, situation_of
 from controller import Controller
 from execution import ExecutionTracker
 from emergency_stop import StopHotkey
-from queueing import edit_queue, units, check_unit
+from queueing import edit_queue, units, check_unit, repot
+from feedback import FeedbackLog
 
 ROOT = Path(__file__).parent
 TICK = 0.15                # main loop period (sun pickup, plan execution)
@@ -171,6 +172,7 @@ class Agent:
 
     def reset_plan(self):
         self.recent = []
+        self.feedback = FeedbackLog()
         self.queue = []
         self.had_plan = False
         self.planted_since_ask = 0
@@ -221,8 +223,12 @@ class Agent:
 
     def event(self, text):
         """Something the player would notice on screen, reported with its next board."""
-        self.recent = (self.recent + [f"EVENT: {text}"])[-20:]
+        self.add_feedback(f"EVENT: {text}")
         self.log(kind="event", text=text)
+
+    def add_feedback(self, text):
+        self.recent = (self.recent + [text])[-20:]  # legacy inspection and offline callers
+        self.feedback.add(text)
 
     def annotate(self, s):
         """Facts a human sees but memory doesn't hold directly: how long each plant has
@@ -535,6 +541,7 @@ class Agent:
             state = self.snapshot()
             if not self.readable(state):
                 return
+            self.queue = repot(self.queue, state, self.issue_auto)
             selected = None
             barrier = None
             for unit in units(self.queue):
@@ -581,6 +588,12 @@ class Agent:
         if self.execution:
             self.execution.sample(False, 0)
 
+    def issue_auto(self, action):
+        """Track a step the agent adds for the player (a re-pot), like a queued action."""
+        if self.execution:
+            return self.execution.issue(action, self.decisions)
+        return dict(action)
+
     def record_action(self, action, status, reason, seed, state):
         """Perform one validated move, then record its real outcome and feedback."""
         desc = json.dumps({k: v for k, v in action.items() if v is not None and not k.startswith("_")})
@@ -604,15 +617,15 @@ class Agent:
             if ok and action["type"] == "plant" and shot_behind_zombies(
                     state, action["row"], action["col"], seed["name"]):
                 r, c = action["row"], action["col"]
-                self.event(f"your {seed['name']} at row {r} col {c} was planted behind every zombie "
-                           f"in row {r}; its shots go toward the street, so it can't hit them")
+                self.event(f"your {seed['name']} at row {r} col {c} fires toward the street, "
+                           f"but every current zombie in row {r} has already passed it toward the house")
         print("    " + result)
         feedback = f"{result.split(' ', 1)[0]} {action_text(action)}"
         if status == "reject":
             feedback += f": {reason}"
         elif not ok:
             feedback += ": click did not register"
-        self.recent = (self.recent + [feedback])[-20:]
+        self.add_feedback(feedback)
         self.log(kind="action", action=action, result=result)
         return ok
 
@@ -714,7 +727,7 @@ class Agent:
         except OSError as error:
             self.log(kind="screenshot_error", level=level, error=str(error))
 
-    def ask_brain(self, state, recent, queue, trigger):
+    def ask_brain(self, state, recent, queue, trigger, feedback_cursor=None):
         """Runs in the background thread."""
         t0 = time.time()
         try:
@@ -726,6 +739,8 @@ class Agent:
         decision["_trigger"] = trigger
         decision["_queue_ids"] = [a["id"] for a in queue if "id" in a]
         decision["_usage"] = self.usage_fields()
+        decision["_feedback"] = recent
+        decision["_feedback_cursor"] = feedback_cursor
         return decision
 
     def apply_decision(self, decision):
@@ -744,6 +759,8 @@ class Agent:
                 decision["_error"] = True
                 self.event(f"queue edit rejected; your queue was kept: {error}")
                 self.execution.event("queue_edit_rejected", decision=self.decisions, reason=str(error))
+            if not decision.get("_error") and decision.get("_feedback_cursor") is not None:
+                self.feedback.acknowledge(decision["_feedback_cursor"])
         plan = ", ".join(f"{a.get('seed', a['type'])}@{a.get('row')},{a.get('col')}"
                          for a in self.queue) or "nothing for now"
         self.show(f"[{self.decisions}] ({decision['_think']}s) {decision.get('reasoning', '')}\n"
@@ -751,6 +768,7 @@ class Agent:
         self.log(kind="decision", n=self.decisions, think_seconds=decision["_think"],
                  state=decision["_state"], prompt=decision.get("_prompt"),
                  trigger=decision.get("_trigger"),
+                 feedback=decision.get("_feedback"), feedback_cursor=decision.get("_feedback_cursor"),
                  decision={k: v for k, v in decision.items() if not k.startswith("_")},
                  **decision["_usage"])
 
@@ -871,7 +889,10 @@ class Agent:
                         self.rejected_since_ask = 0
                         if self.execution:
                             state["execution"] = self.execution.compact()
-                        pending = pool.submit(self.ask_brain, state, list(self.recent), list(self.queue), trigger)
+                        recent, cursor, omitted = self.feedback.snapshot()
+                        state["feedback_omitted"] = omitted
+                        pending = pool.submit(self.ask_brain, state, recent, list(self.queue), trigger,
+                                              feedback_cursor=cursor)
                         previous_context, last_ask_t = context, now
                         previous_vase_observation = vasebreaker.context(state)
 
