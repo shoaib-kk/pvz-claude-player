@@ -304,7 +304,8 @@ def facts_from_evidence(evidence):
             "stalled_unspent_sun_seconds": metrics.get("queue_stalled_unspent_sun_seconds")}
 
 
-# Plants that disappear when they do their job, so disappearing isn't a loss.
+# These can disappear after activation or after being destroyed. Snapshots alone
+# cannot establish which happened, so neither a successful use nor a loss is counted.
 ONE_USE = {"cherry_bomb", "jalapeno", "squash", "ice_shroom", "doom_shroom", "grave_buster",
            "coffee_bean", "blover", "tangle_kelp", "hypno_shroom", "explode_o_nut"}
 MAYBE_USED = {"potato_mine"}     # exploded, or eaten while still arming - indistinguishable here
@@ -320,6 +321,7 @@ class LevelRecorder:
         self.events = []
         self.last = None
         self.lost_count = {}
+        self.one_use_disappeared = {}
         self.used_count = {}
         self.unarmed_mines = 0
         self.mower_wave = {}
@@ -370,8 +372,9 @@ class LevelRecorder:
                 near = [z["type"] for z in state["zombies"] if z["row"] == row]
                 zs = f" (zombies in that row: {', '.join(sorted(set(near)))})" if near else ""
                 if kind in ONE_USE:
-                    self.used_count[kind] = self.used_count.get(kind, 0) + 1
-                    self.events.append(f"wave {wave}: {kind} at row {row} col {col} was used up{zs}")
+                    self.one_use_disappeared[kind] = self.one_use_disappeared.get(kind, 0) + 1
+                    self.events.append(f"wave {wave}: {kind} at row {row} col {col} is no longer observed "
+                                       f"(activation or destruction unknown; effect unverified){zs}")
                 elif kind in MAYBE_USED:
                     age = ages.get((row, col, kind))
                     if age is None:
@@ -434,6 +437,9 @@ class LevelRecorder:
                 lines.append(f"Replacement value of disappeared plants: {lost} (NOT cash spent; includes free starting plants)")
         if self.used_count:
             lines.append("One-use plants used: " + ", ".join(f"{k} x{v}" for k, v in self.used_count.items()))
+        if self.one_use_disappeared:
+            lines.append("One-use plants no longer observed (activation or destruction unknown; effect unverified): "
+                         + ", ".join(f"{k} x{v}" for k, v in self.one_use_disappeared.items()))
         lines.append("Timeline:")
         lines += [f"  [t{i + 1}] {e}" for i, e in list(enumerate(self.events))[-40:]] or ["  (no plants lost, no mowers used)"]
         if outcome == "lost" and (end := self.ending()):

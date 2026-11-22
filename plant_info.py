@@ -176,7 +176,7 @@ ZOMBIE_CARDS = {
     "yeti": "A rare yeti that runs away after a while.",
     "bungee": "Drops from the sky to steal a plant.",
     "ladder": "Puts a ladder on a wall plant and climbs over it.",
-    "catapult": "Lobs basketballs at plants from a distance.",
+    "catapult": "Lobs basketballs over front plants, then drives forward and crushes plants.",
     "gargantuar": "Huge; smashes plants and throws an imp when damaged.",
     "imp": "Small and fast; thrown by a gargantuar.",
 }
@@ -205,7 +205,7 @@ ZOMBIE_ALMANAC = {
     "yeti": "toughness ~68 peas",
     "bungee": "toughness ~22 peas; steals the plant it lands on; Umbrella Leaf blocks it",
     "ladder": "toughness ~34 peas (ladder shield ~25 + body); metal",
-    "catapult": "toughness ~43 peas; hits plants from the back; Umbrella Leaf blocks the balls",
+    "catapult": "toughness ~43 peas; stops near the street to lob basketballs at the leftmost eligible plant in its own row (nearest the house), including exposed Flower Pots; front walls do not intercept the balls; after its ammunition runs out, or with no eligible target, drives forward and crushes plants, including Wall-nuts; Umbrella Leaf blocks the balls, not the vehicle",
     "gargantuar": "toughness ~150 peas; smashes any plant; throws an imp at half health",
     "imp": "toughness ~14 peas; fast",
 }

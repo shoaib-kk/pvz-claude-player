@@ -117,6 +117,20 @@ class PromptTests(unittest.TestCase):
         text = brains.pick_prompt([{"name": "peashooter", "cost": 100}], 1, {}, level=3)
         self.assertIn("peashooter: Shoots peas", text)
 
+    def test_catapult_mechanics_reach_chooser_and_board_without_strategy(self):
+        s = board("roof")
+        s["level"] = 46
+        s["zombies"] = [{"type": "catapult", "row": 1, "x": 650, "hp": 850, "armor_hp": 0}]
+        texts = [brains.pick_prompt([], 0, {"catapult": 1}, terrain="roof", level=46),
+                 brains.describe(s, [], compact=True)]
+        for text in texts:
+            with self.subTest(text=text[:40]):
+                self.assertIn("leftmost eligible plant in its own row", text)
+                self.assertIn("front walls do not intercept the balls", text)
+                self.assertIn("crushes plants, including Wall-nuts", text)
+                self.assertIn("Umbrella Leaf blocks the balls, not the vehicle", text)
+                self.assertNotIn("Bring a", text)
+
     def test_every_plant_has_a_card(self):
         from state import PLANT_NAMES
         missing = [n for n in PLANT_NAMES if n not in plant_info.CARDS
@@ -323,9 +337,30 @@ class RecorderTests(unittest.TestCase):
         later["plants"] = []
         r.observe(later)
         report = r.report()
-        self.assertIn("cherry_bomb at row 1 col 4 was used up", report)
+        self.assertIn("cherry_bomb at row 1 col 4 is no longer observed", report)
+        self.assertIn("activation or destruction unknown; effect unverified", report)
         self.assertIn("potato_mine at row 2 col 5 is gone (exploded, or eaten before it armed)", report)
         self.assertNotIn("destroyed by zombies", report)
+
+    def test_distant_catapult_and_missing_squash_do_not_prove_squash_activated(self):
+        r = LevelRecorder("5-6")
+        s = board("roof")
+        plant(s, "squash", 1, 1)
+        s["plants"][-1]["hp"] = 75
+        s["zombies"] = [{"type": "catapult", "row": 1, "x": 650, "hp": 730, "armor_hp": 0}]
+        r.observe(s)
+        later = copy.deepcopy(s)
+        later["plants"] = []
+        r.observe(later)
+        r.observe(later)  # the same absence must not be counted twice
+        report = r.report()
+        self.assertIn("squash at row 1 col 1 is no longer observed", report)
+        self.assertIn("activation or destruction unknown; effect unverified", report)
+        self.assertEqual(r.one_use_disappeared, {"squash": 1})
+        self.assertNotIn("squash", r.used_count)
+        self.assertNotIn("squash", r.lost_count)
+        self.assertNotIn("was used up", report)
+        self.assertNotIn("One-use plants used:", report)
 
 
 class PlanAndFactsTests(unittest.TestCase):
