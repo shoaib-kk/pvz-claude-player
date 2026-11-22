@@ -1,6 +1,6 @@
 # Development timeline
 
-What changed, when, and why, for use in the video. Times are local to Sydney.
+What changed, when, and why. Times are local to Sydney.
 Haiku played the early runs. Sonnet took over at 2-3. The numbers come from the run logs.
 
 ## Before this session
@@ -46,9 +46,3 @@ Haiku played the early runs. Sonnet took over at 2-3. The numbers come from the 
 On 20 November, Sonnet cleared 3-6 and 3-7 on its first attempt and won 3-8 and 3-9 on retry. It then won 3-10 on its first attempt in 79 gameplay decisions with all six mowers intact.
 
 **Headline numbers:** 1-7 to 1-10 were won back to back in one run. That run took 163 Claude decisions and 214 actions, with **0 failed clicks** and no retries.
-
-**Story beats for the video**
-1. Offline-built features hit reality: three controller bugs (a hidden dialog, sun pickup, the shovel off-screen), each found and fixed in minutes.
-2. Taking menu clicking away from the AI: a script now handles menus and other screens, so Claude spends its decisions only on plant choices and gameplay.
-3. The wall at 1-7: the AI lost twice, and the cause was its strategy, not the code.
-4. One change to the AI's view of the board (the lane check) took it from two losses to four wins in a row.

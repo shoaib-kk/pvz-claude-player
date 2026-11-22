@@ -6,8 +6,7 @@ final board) and rewrites its lessons in its own words. Lessons are kept in two 
 general ones, and ones for the current situation (night, pool, conveyor...), so that
 lessons for one kind of level don't crowd out another's. The journal carries across
 levels and runs and goes into the player's prompts, so strategy is learned rather than
-hard-coded. It lives in journal/ (git-ignored); journal/lessons.md is a readable copy
-for the video.
+hard-coded. It lives in journal/ (git-ignored); journal/lessons.md is a readable copy.
 """
 import json
 from datetime import datetime

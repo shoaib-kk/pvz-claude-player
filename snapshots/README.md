@@ -1,6 +1,6 @@
 # Journal snapshots
 
-Copies of the player's journals at points worth revisiting for the video.
+Copies of the player's journals at notable points in the campaign.
 The live journals (`journal/`, `journal_sonnet/`) are git-ignored and keep changing.
 
 | Snapshot | What it captures |

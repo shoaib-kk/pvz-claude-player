@@ -11,14 +11,5 @@ screen.png
 .claude/
 /AGENTS.md
 /CLAUDE.md
-audio-review/
-/research/
 journal*/
 !snapshots/*/journal*/
-video/.venv-tools/
-node_modules/
-video/remotion-studio/out/
-video/**/media/
-
-# Local generated artwork, thumbnail concepts, references, and design documents
-/output/
